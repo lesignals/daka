@@ -174,7 +174,9 @@ public enum MonthlyWorkdaySummarizer {
 
             let dateKeys = dateKeysInMonth(year: year, month: monthNumber, upTo: month == currentMonth ? todayKey : nil)
             let holidayYear = holidayYears[year]
-            let workdayKeys = dateKeys.filter { calendar.isWorkday(dateKey: $0, holidayYear: holidayYear) }
+            let workdayKeys = dateKeys
+                .filter { calendar.isWorkday(dateKey: $0, holidayYear: holidayYear) }
+                .filter { recordByDate[$0]?.excludedFromStats != true }
             guard !workdayKeys.isEmpty else {
                 return nil
             }
@@ -257,6 +259,7 @@ public enum WeeklyWorkdaySummarizer {
                 return false
             }
             return workdayCalendar.isWorkday(dateKey: dateKey, holidayYear: holidayYears[year])
+                && recordByDate[dateKey]?.excludedFromStats != true
         }
 
         let totalSeconds = workdayKeys.reduce(TimeInterval(0)) { partial, dateKey in

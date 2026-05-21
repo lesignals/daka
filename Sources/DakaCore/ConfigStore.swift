@@ -199,7 +199,7 @@ public final class DakaStore {
 
     public func loadRecords() throws -> [DailyRecord] {
         let sql = """
-        SELECT date, first_matched_at, last_matched_at
+        SELECT date, first_matched_at, last_matched_at, excluded_from_stats
         FROM daily_records
         ORDER BY date ASC;
         """
@@ -216,7 +216,13 @@ public final class DakaStore {
             let date = String(cString: sqlite3_column_text(statement, 0))
             let firstMatchedAt = optionalDate(statement, column: 1)
             let lastMatchedAt = optionalDate(statement, column: 2)
-            records.append(DailyRecord(date: date, firstMatchedAt: firstMatchedAt, lastMatchedAt: lastMatchedAt))
+            let excludedFromStats = sqlite3_column_int(statement, 3) != 0
+            records.append(DailyRecord(
+                date: date,
+                firstMatchedAt: firstMatchedAt,
+                lastMatchedAt: lastMatchedAt,
+                excludedFromStats: excludedFromStats
+            ))
         }
 
         return records
@@ -232,11 +238,12 @@ public final class DakaStore {
 
     private func saveRecord(_ record: DailyRecord) throws {
         let sql = """
-        INSERT INTO daily_records(date, first_matched_at, last_matched_at, updated_at)
-        VALUES(?, ?, ?, ?)
+        INSERT INTO daily_records(date, first_matched_at, last_matched_at, excluded_from_stats, updated_at)
+        VALUES(?, ?, ?, ?, ?)
         ON CONFLICT(date) DO UPDATE SET
             first_matched_at = excluded.first_matched_at,
             last_matched_at = excluded.last_matched_at,
+            excluded_from_stats = excluded.excluded_from_stats,
             updated_at = excluded.updated_at;
         """
 
@@ -249,7 +256,8 @@ public final class DakaStore {
         try bind(record.date, to: statement, index: 1)
         try bindOptionalDate(record.firstMatchedAt, to: statement, index: 2)
         try bindOptionalDate(record.lastMatchedAt, to: statement, index: 3)
-        try bind(Date().timeIntervalSince1970, to: statement, index: 4)
+        try bind(record.excludedFromStats, to: statement, index: 4)
+        try bind(Date().timeIntervalSince1970, to: statement, index: 5)
         try stepDone(statement)
     }
 
@@ -275,9 +283,14 @@ public final class DakaStore {
             date TEXT PRIMARY KEY NOT NULL,
             first_matched_at REAL,
             last_matched_at REAL,
+            excluded_from_stats INTEGER NOT NULL DEFAULT 0,
             updated_at REAL NOT NULL
         );
         """)
+
+        if try !table("daily_records", hasColumn: "excluded_from_stats") {
+            try execute("ALTER TABLE daily_records ADD COLUMN excluded_from_stats INTEGER NOT NULL DEFAULT 0;")
+        }
     }
 
     private func migrateLegacyJSONIfNeeded() throws {
@@ -356,6 +369,12 @@ public final class DakaStore {
         }
     }
 
+    private func bind(_ value: Bool, to statement: OpaquePointer?, index: Int32) throws {
+        if sqlite3_bind_int(statement, index, value ? 1 : 0) != SQLITE_OK {
+            throw StoreError.sqlite(message: lastErrorMessage)
+        }
+    }
+
     private func bindOptionalDate(_ date: Date?, to statement: OpaquePointer?, index: Int32) throws {
         guard let date else {
             if sqlite3_bind_null(statement, index) != SQLITE_OK {
@@ -373,6 +392,24 @@ public final class DakaStore {
         }
 
         return Date(timeIntervalSince1970: sqlite3_column_double(statement, column))
+    }
+
+    private func table(_ table: String, hasColumn column: String) throws -> Bool {
+        var statement: OpaquePointer?
+        defer {
+            sqlite3_finalize(statement)
+        }
+
+        try prepare("PRAGMA table_info(\(table));", statement: &statement)
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let columnName = sqlite3_column_text(statement, 1) else {
+                continue
+            }
+            if String(cString: columnName) == column {
+                return true
+            }
+        }
+        return false
     }
 
     private var lastErrorMessage: String {

@@ -18,7 +18,7 @@ final class StatsWindowController: NSWindowController {
     private let trendChartView = TrendChartView()
     private let heatmapView = HeatmapView()
     private let summary = NSTextField(labelWithString: "")
-    private let calendarStatus = NSTextField(labelWithString: "")
+    private let excludeButton = NSButton(title: "不计入统计", target: nil, action: nil)
     private let editButton = NSButton(title: "编辑时间", target: nil, action: nil)
     private let chinaCalendar = ChinaWorkdayCalendar()
 
@@ -34,7 +34,7 @@ final class StatsWindowController: NSWindowController {
         self.onSave = onSave
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 620, height: 460),
+            contentRect: NSRect(x: 0, y: 0, width: 700, height: 460),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
@@ -102,6 +102,7 @@ final class StatsWindowController: NSWindowController {
         addColumn(id: "last", title: "最后", width: 120)
         addColumn(id: "span", title: "跨度", width: 100)
         addColumn(id: "progress", title: "完成率", width: 90)
+        addColumn(id: "stats", title: "统计", width: 80)
 
         contentContainer.translatesAutoresizingMaskIntoConstraints = false
         root.addArrangedSubview(contentContainer)
@@ -119,6 +120,11 @@ final class StatsWindowController: NSWindowController {
 
         let spacer = NSView()
         footer.addArrangedSubview(spacer)
+
+        excludeButton.target = self
+        excludeButton.action = #selector(toggleSelectedRecordExcluded)
+        excludeButton.isEnabled = false
+        footer.addArrangedSubview(excludeButton)
 
         editButton.target = self
         editButton.action = #selector(editSelectedRecord)
@@ -152,10 +158,6 @@ final class StatsWindowController: NSWindowController {
         monthlyContainer.addSubview(stack)
         pin(stack, to: monthlyContainer)
 
-        calendarStatus.textColor = .secondaryLabelColor
-        calendarStatus.font = .systemFont(ofSize: 12)
-        stack.addArrangedSubview(calendarStatus)
-
         monthlyTableView.delegate = self
         monthlyTableView.dataSource = self
         monthlyTableView.usesAlternatingRowBackgroundColors = true
@@ -167,7 +169,6 @@ final class StatsWindowController: NSWindowController {
         addMonthlyColumn(id: "total", title: "总时长", width: 100)
         addMonthlyColumn(id: "average", title: "日均", width: 100)
         addMonthlyColumn(id: "status", title: "达标", width: 70)
-        addMonthlyColumn(id: "calendar", title: "日历", width: 80)
 
         let scrollView = NSScrollView()
         scrollView.documentView = monthlyTableView
@@ -192,8 +193,11 @@ final class StatsWindowController: NSWindowController {
     }
 
     private var summaryText: String {
-        let completed = records.filter { $0.firstMatchedAt != nil && $0.lastMatchedAt != nil }
-        return "共 \(records.count) 天记录，\(completed.count) 天有有效时间，日目标 \(DakaFormatters.duration(targetDurationSeconds))，月均目标 \(DakaFormatters.duration(monthlyAverageTargetSeconds))"
+        let workdayRecords = recordsForVisibleWorkdays()
+        let included = workdayRecords.filter { !$0.excludedFromStats }
+        let completed = included.filter { $0.firstMatchedAt != nil && $0.lastMatchedAt != nil }
+        let excludedCount = workdayRecords.count - included.count
+        return "共 \(workdayRecords.count) 天工作日记录，\(excludedCount) 天不计入，\(completed.count) 天有有效时间，日目标 \(DakaFormatters.duration(targetDurationSeconds))，月均目标 \(DakaFormatters.duration(monthlyAverageTargetSeconds))"
     }
 
     private func addColumn(id: String, title: String, width: CGFloat) {
@@ -212,20 +216,32 @@ final class StatsWindowController: NSWindowController {
 
     @objc private func editSelectedRecord() {
         let row = tableView.selectedRow
-        guard row >= 0, row < records.count else {
+        let visibleRecords = recordsForVisibleWorkdays()
+        guard row >= 0, row < visibleRecords.count,
+              let recordIndex = records.firstIndex(where: { $0.date == visibleRecords[row].date }) else {
             return
         }
 
-        let original = records[row]
+        let original = records[recordIndex]
         guard let updated = RecordEditor.run(record: original) else {
             return
         }
 
-        records[row] = updated
-        records.sort { $0.date > $1.date }
-        tableView.reloadData()
-        summary.stringValue = summaryText
-        refreshCharts()
+        records[recordIndex] = updated
+        refreshAfterRecordsChanged(selectedDate: updated.date)
+        onSave(records)
+    }
+
+    @objc private func toggleSelectedRecordExcluded() {
+        let row = tableView.selectedRow
+        let visibleRecords = recordsForVisibleWorkdays()
+        guard row >= 0, row < visibleRecords.count,
+              let recordIndex = records.firstIndex(where: { $0.date == visibleRecords[row].date }) else {
+            return
+        }
+
+        records[recordIndex].excludedFromStats.toggle()
+        refreshAfterRecordsChanged(selectedDate: records[recordIndex].date)
         onSave(records)
     }
 
@@ -233,16 +249,16 @@ final class StatsWindowController: NSWindowController {
         switch tabControl.selectedSegment {
         case 1:
             showPanel(trendChartView)
-            editButton.isEnabled = false
+            updateRecordButtons(enabled: false)
         case 2:
             showPanel(heatmapView)
-            editButton.isEnabled = false
+            updateRecordButtons(enabled: false)
         case 3:
             showPanel(monthlyContainer)
-            editButton.isEnabled = false
+            updateRecordButtons(enabled: false)
         default:
             showPanel(tableContainer)
-            editButton.isEnabled = tableView.selectedRow >= 0
+            updateRecordButtons(enabled: tableView.selectedRow >= 0)
         }
     }
 
@@ -253,10 +269,48 @@ final class StatsWindowController: NSWindowController {
     }
 
     private func refreshCharts() {
-        trendChartView.records = records
+        let visibleRecords = recordsForVisibleWorkdays()
+        trendChartView.records = visibleRecords
         trendChartView.targetDurationSeconds = targetDurationSeconds
-        heatmapView.records = records
+        heatmapView.records = visibleRecords
         heatmapView.targetDurationSeconds = targetDurationSeconds
+    }
+
+    private func refreshAfterRecordsChanged(selectedDate: String? = nil) {
+        records.sort { $0.date > $1.date }
+        tableView.reloadData()
+        summary.stringValue = summaryText
+        refreshCharts()
+        refreshMonthlySummaries(fetchRemote: false)
+
+        let visibleRecords = recordsForVisibleWorkdays()
+        if let selectedDate, let index = visibleRecords.firstIndex(where: { $0.date == selectedDate }) {
+            tableView.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
+        }
+        updateRecordButtons(enabled: tableView.selectedRow >= 0 && tabControl.selectedSegment == 0)
+    }
+
+    private func updateRecordButtons(enabled: Bool) {
+        editButton.isEnabled = enabled
+        excludeButton.isEnabled = enabled
+
+        let visibleRecords = recordsForVisibleWorkdays()
+        guard enabled, tableView.selectedRow >= 0, tableView.selectedRow < visibleRecords.count else {
+            excludeButton.title = "不计入统计"
+            return
+        }
+
+        excludeButton.title = visibleRecords[tableView.selectedRow].excludedFromStats ? "恢复计入统计" : "不计入统计"
+    }
+
+    private func recordsForVisibleWorkdays() -> [DailyRecord] {
+        records.filter { record in
+            guard let year = ChinaWorkdayCalendar.year(from: record.date) else {
+                return false
+            }
+
+            return chinaCalendar.isWorkday(dateKey: record.date, holidayYear: holidayYears[year])
+        }
     }
 
     private func refreshMonthlySummaries(fetchRemote: Bool) {
@@ -268,8 +322,11 @@ final class StatsWindowController: NSWindowController {
             holidayYears: holidayYears,
             calendar: chinaCalendar
         )
-        calendarStatus.stringValue = calendarStatusText(requiredYears: years)
         monthlyTableView.reloadData()
+        summary.stringValue = summaryText
+        refreshCharts()
+        tableView.reloadData()
+        updateRecordButtons(enabled: tableView.selectedRow >= 0 && tabControl.selectedSegment == 0)
 
         guard fetchRemote, !years.isEmpty else {
             return
@@ -288,8 +345,11 @@ final class StatsWindowController: NSWindowController {
                     holidayYears: self.holidayYears,
                     calendar: self.chinaCalendar
                 )
-                self.calendarStatus.stringValue = self.calendarStatusText(requiredYears: years)
                 self.monthlyTableView.reloadData()
+                self.summary.stringValue = self.summaryText
+                self.refreshCharts()
+                self.tableView.reloadData()
+                self.updateRecordButtons(enabled: self.tableView.selectedRow >= 0 && self.tabControl.selectedSegment == 0)
             }
         }
     }
@@ -298,15 +358,6 @@ final class StatsWindowController: NSWindowController {
         var years = Set(records.compactMap { ChinaWorkdayCalendar.year(from: $0.date) })
         years.insert(Calendar.current.component(.year, from: Date()))
         return years
-    }
-
-    private func calendarStatusText(requiredYears: Set<Int>) -> String {
-        let missingYears = requiredYears.subtracting(Set(holidayYears.keys)).sorted()
-        if missingYears.isEmpty {
-            return "中国调休日历已加载，当前月统计到今天。"
-        }
-
-        return "缺少 \(missingYears.map(String.init).joined(separator: "、")) 年中国日历，缺失年份暂按周一至周五估算。"
     }
 
     private func pin(_ child: NSView, to parent: NSView) {
@@ -325,7 +376,7 @@ extension StatsWindowController: NSTableViewDataSource, NSTableViewDelegate {
             return monthlySummaries.count
         }
 
-        return records.count
+        return recordsForVisibleWorkdays().count
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
@@ -337,7 +388,11 @@ extension StatsWindowController: NSTableViewDataSource, NSTableViewDelegate {
             return monthlyCell(tableColumn: tableColumn, row: row)
         }
 
-        let record = records[row]
+        let visibleRecords = recordsForVisibleWorkdays()
+        guard row < visibleRecords.count else {
+            return nil
+        }
+        let record = visibleRecords[row]
         let identifier = NSUserInterfaceItemIdentifier("statsCell")
         let field = tableView.makeView(withIdentifier: identifier, owner: self) as? NSTextField ?? NSTextField(labelWithString: "")
         field.identifier = identifier
@@ -355,6 +410,9 @@ extension StatsWindowController: NSTableViewDataSource, NSTableViewDelegate {
         case "progress":
             field.stringValue = DakaFormatters.percent(progress(for: record))
             field.textColor = color(for: record)
+        case "stats":
+            field.stringValue = record.excludedFromStats ? "不计入" : "计入"
+            field.textColor = record.excludedFromStats ? .systemOrange : .secondaryLabelColor
         default:
             field.stringValue = ""
         }
@@ -367,7 +425,7 @@ extension StatsWindowController: NSTableViewDataSource, NSTableViewDelegate {
             return
         }
 
-        editButton.isEnabled = tableView.selectedRow >= 0
+        updateRecordButtons(enabled: tableView.selectedRow >= 0 && tabControl.selectedSegment == 0)
     }
 
     private func monthlyCell(tableColumn: NSTableColumn, row: Int) -> NSView? {
@@ -391,9 +449,6 @@ extension StatsWindowController: NSTableViewDataSource, NSTableViewDelegate {
         case "status":
             field.stringValue = summary.isPassing ? "达标" : "未达标"
             field.textColor = summary.isPassing ? .systemGreen : .systemRed
-        case "calendar":
-            field.stringValue = summary.usesChinaCalendarData ? "中国" : "估算"
-            field.textColor = summary.usesChinaCalendarData ? .secondaryLabelColor : .systemOrange
         default:
             field.stringValue = ""
         }
@@ -402,7 +457,7 @@ extension StatsWindowController: NSTableViewDataSource, NSTableViewDelegate {
     }
 
     private func progress(for record: DailyRecord) -> Double {
-        guard let spanSeconds = record.spanSeconds, targetDurationSeconds > 0 else {
+        guard !record.excludedFromStats, let spanSeconds = record.spanSeconds, targetDurationSeconds > 0 else {
             return 0
         }
 
@@ -410,6 +465,10 @@ extension StatsWindowController: NSTableViewDataSource, NSTableViewDelegate {
     }
 
     private func color(for record: DailyRecord) -> NSColor {
+        guard !record.excludedFromStats else {
+            return .systemOrange
+        }
+
         switch ProgressStage.stage(spanSeconds: record.spanSeconds, targetSeconds: targetDurationSeconds) {
         case .empty:
             return .tertiaryLabelColor

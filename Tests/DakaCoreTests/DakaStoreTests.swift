@@ -14,7 +14,12 @@ struct DakaStoreTests {
         )
         let first = Date(timeIntervalSince1970: 1_779_250_400)
         let last = Date(timeIntervalSince1970: 1_779_282_800)
-        let record = DailyRecord(date: "2026-05-20", firstMatchedAt: first, lastMatchedAt: last)
+        let record = DailyRecord(
+            date: "2026-05-20",
+            firstMatchedAt: first,
+            lastMatchedAt: last,
+            excludedFromStats: true
+        )
 
         try store.saveConfig(config)
         try store.saveRecords([record])
@@ -24,6 +29,53 @@ struct DakaStoreTests {
         #expect(try reloaded.loadConfig() == config)
         #expect(try reloaded.loadRecords() == [record])
         #expect(FileManager.default.fileExists(atPath: paths.databaseURL.path))
+    }
+
+    @Test func oldRecordJSONDefaultsToIncludedInStats() throws {
+        let json = """
+        {
+          "date": "2026-05-20",
+          "firstMatchedAt": "2026-05-20T09:00:00Z",
+          "lastMatchedAt": "2026-05-20T18:00:00Z"
+        }
+        """
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        let record = try decoder.decode(DailyRecord.self, from: Data(json.utf8))
+
+        #expect(record.excludedFromStats == false)
+    }
+
+    @Test func manualExcludedRecordsAreSkippedByMonthlyAndWeeklyStats() throws {
+        let first = Date(timeIntervalSince1970: 1_779_250_400)
+        let last = first.addingTimeInterval(8 * 60 * 60)
+        let records = [
+            DailyRecord(date: "2026-05-18", firstMatchedAt: first, lastMatchedAt: last),
+            DailyRecord(date: "2026-05-19", firstMatchedAt: first, lastMatchedAt: last, excludedFromStats: true),
+            DailyRecord(date: "2026-05-20", firstMatchedAt: first, lastMatchedAt: last)
+        ]
+        let date = try #require(ISO8601DateFormatter().date(from: "2026-05-20T12:00:00Z"))
+
+        let monthly = MonthlyWorkdaySummarizer.summaries(
+            records: records,
+            targetSeconds: 8 * 60 * 60,
+            holidayYears: [:],
+            today: date
+        )
+        let weekly = WeeklyWorkdaySummarizer.status(
+            records: records,
+            targetSeconds: 24 * 60 * 60,
+            holidayYears: [:],
+            at: date
+        )
+
+        #expect(monthly.first?.workdayCount == 13)
+        #expect(monthly.first?.recordedWorkdayCount == 2)
+        #expect(monthly.first?.totalSeconds == 16 * 60 * 60)
+        #expect(weekly.workdayCount == 2)
+        #expect(weekly.totalSeconds == 16 * 60 * 60)
     }
 
     @Test func migratesLegacyJSONIntoSQLite() throws {

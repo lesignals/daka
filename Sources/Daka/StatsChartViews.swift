@@ -26,7 +26,7 @@ final class TrendChartView: NSView {
         drawAxes(in: rect)
 
         let sorted = records
-            .filter { $0.spanSeconds != nil }
+            .filter { !$0.excludedFromStats && $0.spanSeconds != nil }
             .sorted { $0.date < $1.date }
             .suffix(45)
 
@@ -141,7 +141,9 @@ final class HeatmapView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
 
-        let sorted = records.sorted { $0.date < $1.date }
+        let sorted = records
+            .filter { !$0.excludedFromStats }
+            .sorted { $0.date < $1.date }
         guard !sorted.isEmpty else {
             drawEmptyMessage("暂无热力图数据")
             return

@@ -4,11 +4,33 @@ public struct DailyRecord: Codable, Equatable, Sendable {
     public var date: String
     public var firstMatchedAt: Date?
     public var lastMatchedAt: Date?
+    public var excludedFromStats: Bool
 
-    public init(date: String, firstMatchedAt: Date? = nil, lastMatchedAt: Date? = nil) {
+    private enum CodingKeys: String, CodingKey {
+        case date
+        case firstMatchedAt
+        case lastMatchedAt
+        case excludedFromStats
+    }
+
+    public init(
+        date: String,
+        firstMatchedAt: Date? = nil,
+        lastMatchedAt: Date? = nil,
+        excludedFromStats: Bool = false
+    ) {
         self.date = date
         self.firstMatchedAt = firstMatchedAt
         self.lastMatchedAt = lastMatchedAt
+        self.excludedFromStats = excludedFromStats
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.date = try container.decode(String.self, forKey: .date)
+        self.firstMatchedAt = try container.decodeIfPresent(Date.self, forKey: .firstMatchedAt)
+        self.lastMatchedAt = try container.decodeIfPresent(Date.self, forKey: .lastMatchedAt)
+        self.excludedFromStats = try container.decodeIfPresent(Bool.self, forKey: .excludedFromStats) ?? false
     }
 
     public var spanSeconds: TimeInterval? {
