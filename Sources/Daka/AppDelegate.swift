@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var nextClockInReminderAt: Date?
     private let chinaCalendar = ChinaWorkdayCalendar()
     private var holidayYears: [Int: ChinaHolidayYear] = [:]
+    private var statsPaused = UserDefaults.standard.bool(forKey: "Daka.statsPaused")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -100,11 +101,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let now = Date()
         let evaluator = RuleEvaluator(checker: checker)
         let matched = evaluator.evaluate(config.rule, at: now)
+        let shouldRecord = matched && !statsPaused
 
         currentRecord = recorder.update(record: currentRecord, matched: false, at: now)
-        lastMatched = matched
+        lastMatched = shouldRecord
 
-        if matched {
+        if shouldRecord {
             if currentRecord?.firstMatchedAt == nil {
                 showClockInReminderIfNeeded(at: now)
             } else {
@@ -158,7 +160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "目标时长：\(DakaFormatters.duration(config.targetDurationSeconds))", action: nil, keyEquivalent: "")
         menu.addItem(progressMenuItem())
         menu.addItem(.separator())
-        menu.addItem(withTitle: "当前状态：\(lastMatched ? "满足条件" : "未满足条件")", action: nil, keyEquivalent: "")
+        menu.addItem(withTitle: "当前状态：\(statusText)", action: nil, keyEquivalent: "")
         menu.addItem(withTitle: "规则：\(config.rule.name)", action: nil, keyEquivalent: "")
         menu.addItem(.separator())
 
@@ -177,12 +179,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         recordsItem.target = self
         menu.addItem(recordsItem)
 
+        let leaveItem = NSMenuItem(title: "添加请假日...", action: #selector(addLeaveDayFromMenu), keyEquivalent: "l")
+        leaveItem.target = self
+        menu.addItem(leaveItem)
+
+        let pauseItem = NSMenuItem(title: statsPaused ? "恢复统计" : "暂停统计", action: #selector(toggleStatsPaused), keyEquivalent: "p")
+        pauseItem.target = self
+        pauseItem.state = statsPaused ? .on : .off
+        menu.addItem(pauseItem)
+
         menu.addItem(.separator())
 
         let quitItem = NSMenuItem(title: "退出", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(quitItem)
 
         statusItem.menu = menu
+    }
+
+    private var statusText: String {
+        if statsPaused {
+            return "已暂停统计"
+        }
+
+        return lastMatched ? "满足条件" : "未满足条件"
     }
 
     private var progressValue: Double {
@@ -250,6 +269,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    @objc private func toggleStatsPaused() {
+        statsPaused.toggle()
+        UserDefaults.standard.set(statsPaused, forKey: "Daka.statsPaused")
+        evaluateAndRender()
+    }
+
     @objc private func showStats() {
         persistCurrentRecord()
 
@@ -274,6 +299,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statsWindowController = controller
         controller.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func addLeaveDayFromMenu() {
+        persistCurrentRecord()
+
+        guard let dateKey = LeaveDayPicker.run() else {
+            return
+        }
+
+        markLeaveDay(dateKey)
+        statsWindowController?.update(
+            records: records,
+            targetDurationSeconds: config.targetDurationSeconds,
+            monthlyAverageTargetSeconds: config.monthlyAverageTargetSeconds
+        )
+    }
+
+    private func markLeaveDay(_ dateKey: String) {
+        if let recordIndex = records.firstIndex(where: { $0.date == dateKey }) {
+            records[recordIndex].excludedFromStats = true
+        } else {
+            records.append(DailyRecord(date: dateKey, excludedFromStats: true))
+        }
+
+        currentRecord = records.first { $0.date == recorder.dateKey(for: Date()) }
+
+        do {
+            try store.saveRecords(records)
+            renderStatusTitle()
+            renderMenu()
+        } catch {
+            NSLog("Daka records save failed: \(error)")
+        }
     }
 
     private func saveConfig(_ nextConfig: AppConfig) {

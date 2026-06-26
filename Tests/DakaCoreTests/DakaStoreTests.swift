@@ -78,6 +78,38 @@ struct DakaStoreTests {
         #expect(weekly.totalSeconds == 16 * 60 * 60)
     }
 
+    @Test func leaveDayWithoutClockRecordsReducesMonthlyWorkdayCount() throws {
+        let records = [
+            DailyRecord(date: "2026-06-10", excludedFromStats: true)
+        ]
+        let holidayYear = ChinaHolidayYear(
+            year: 2026,
+            region: "CN",
+            dates: [
+                ChinaHolidayDate(
+                    date: "2026-06-19",
+                    name: "Dragon Boat Festival",
+                    nameCN: "端午节",
+                    nameEN: "Dragon Boat Festival",
+                    type: .publicHoliday
+                )
+            ]
+        )
+        let date = try #require(ISO8601DateFormatter().date(from: "2026-06-26T12:00:00Z"))
+
+        let monthly = MonthlyWorkdaySummarizer.summaries(
+            records: records,
+            targetSeconds: 8 * 60 * 60,
+            holidayYears: [2026: holidayYear],
+            today: date
+        )
+
+        #expect(monthly.first?.month == "2026-06")
+        #expect(monthly.first?.workdayCount == 18)
+        #expect(monthly.first?.recordedWorkdayCount == 0)
+        #expect(monthly.first?.totalSeconds == 0)
+    }
+
     @Test func migratesLegacyJSONIntoSQLite() throws {
         let directory = try temporaryDirectory()
         let paths = try DakaPaths(baseDirectory: directory)

@@ -18,6 +18,7 @@ final class StatsWindowController: NSWindowController {
     private let trendChartView = TrendChartView()
     private let heatmapView = HeatmapView()
     private let summary = NSTextField(labelWithString: "")
+    private let addLeaveButton = NSButton(title: "添加请假日", target: nil, action: nil)
     private let excludeButton = NSButton(title: "不计入统计", target: nil, action: nil)
     private let editButton = NSButton(title: "编辑时间", target: nil, action: nil)
     private let chinaCalendar = ChinaWorkdayCalendar()
@@ -34,12 +35,16 @@ final class StatsWindowController: NSWindowController {
         self.onSave = onSave
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 700, height: 460),
+            contentRect: NSRect(x: 0, y: 0, width: 780, height: 540),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = "Daka 统计"
+        window.minSize = NSSize(width: 700, height: 480)
+        window.titlebarAppearsTransparent = true
+        window.toolbarStyle = .unified
+        window.isMovableByWindowBackground = true
         window.center()
 
         super.init(window: window)
@@ -67,10 +72,13 @@ final class StatsWindowController: NSWindowController {
             return
         }
 
+        contentView.wantsLayer = true
+        contentView.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+
         let root = NSStackView()
         root.orientation = .vertical
-        root.spacing = 12
-        root.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
+        root.spacing = 14
+        root.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
         root.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(root)
 
@@ -81,18 +89,41 @@ final class StatsWindowController: NSWindowController {
             root.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
         ])
 
-        summary.font = .systemFont(ofSize: 13, weight: .medium)
+        let overviewPanel = RoundedPanelView()
+        root.addArrangedSubview(overviewPanel)
+
+        let overviewStack = NSStackView()
+        overviewStack.orientation = .vertical
+        overviewStack.spacing = 5
+        overviewStack.translatesAutoresizingMaskIntoConstraints = false
+        overviewPanel.addSubview(overviewStack)
+        pin(overviewStack, to: overviewPanel, insets: NSEdgeInsets(top: 12, left: 14, bottom: 12, right: 14))
+
+        let overviewTitle = NSTextField(labelWithString: "统计概览")
+        overviewTitle.font = .systemFont(ofSize: 15, weight: .semibold)
+        overviewTitle.textColor = .labelColor
+        overviewStack.addArrangedSubview(overviewTitle)
+
+        summary.font = .systemFont(ofSize: 12, weight: .regular)
+        summary.textColor = .secondaryLabelColor
+        summary.lineBreakMode = .byWordWrapping
+        summary.maximumNumberOfLines = 0
         summary.stringValue = summaryText
-        root.addArrangedSubview(summary)
+        overviewStack.addArrangedSubview(summary)
 
         tabControl.selectedSegment = 0
+        tabControl.segmentStyle = .rounded
+        tabControl.controlSize = .large
         tabControl.target = self
         tabControl.action = #selector(tabChanged)
         root.addArrangedSubview(tabControl)
 
         tableView.delegate = self
         tableView.dataSource = self
-        tableView.usesAlternatingRowBackgroundColors = true
+        tableView.style = .inset
+        tableView.rowSizeStyle = .medium
+        tableView.backgroundColor = .clear
+        tableView.usesAlternatingRowBackgroundColors = false
         tableView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         tableView.target = self
         tableView.doubleAction = #selector(editSelectedRecord)
@@ -106,7 +137,7 @@ final class StatsWindowController: NSWindowController {
 
         contentContainer.translatesAutoresizingMaskIntoConstraints = false
         root.addArrangedSubview(contentContainer)
-        contentContainer.heightAnchor.constraint(greaterThanOrEqualToConstant: 280).isActive = true
+        contentContainer.heightAnchor.constraint(greaterThanOrEqualToConstant: 330).isActive = true
 
         setupTableContainer()
         setupMonthlyContainer()
@@ -116,19 +147,27 @@ final class StatsWindowController: NSWindowController {
         let footer = NSStackView()
         footer.orientation = .horizontal
         footer.spacing = 10
+        footer.alignment = .centerY
         root.addArrangedSubview(footer)
 
         let spacer = NSView()
         footer.addArrangedSubview(spacer)
 
+        addLeaveButton.target = self
+        addLeaveButton.action = #selector(addLeaveDay)
+        styleFooterButton(addLeaveButton)
+        footer.addArrangedSubview(addLeaveButton)
+
         excludeButton.target = self
         excludeButton.action = #selector(toggleSelectedRecordExcluded)
         excludeButton.isEnabled = false
+        styleFooterButton(excludeButton)
         footer.addArrangedSubview(excludeButton)
 
         editButton.target = self
         editButton.action = #selector(editSelectedRecord)
         editButton.isEnabled = false
+        styleFooterButton(editButton)
         footer.addArrangedSubview(editButton)
     }
 
@@ -137,13 +176,19 @@ final class StatsWindowController: NSWindowController {
         contentContainer.addSubview(tableContainer)
         pin(tableContainer, to: contentContainer)
 
+        let panel = RoundedPanelView()
+        panel.translatesAutoresizingMaskIntoConstraints = false
+        tableContainer.addSubview(panel)
+        pin(panel, to: tableContainer)
+
         let scrollView = NSScrollView()
         scrollView.documentView = tableView
         scrollView.hasVerticalScroller = true
-        scrollView.borderType = .bezelBorder
+        scrollView.borderType = .noBorder
+        scrollView.drawsBackground = false
         scrollView.translatesAutoresizingMaskIntoConstraints = false
-        tableContainer.addSubview(scrollView)
-        pin(scrollView, to: tableContainer)
+        panel.addSubview(scrollView)
+        pin(scrollView, to: panel, insets: NSEdgeInsets(top: 6, left: 6, bottom: 6, right: 6))
     }
 
     private func setupMonthlyContainer() {
@@ -160,7 +205,10 @@ final class StatsWindowController: NSWindowController {
 
         monthlyTableView.delegate = self
         monthlyTableView.dataSource = self
-        monthlyTableView.usesAlternatingRowBackgroundColors = true
+        monthlyTableView.style = .inset
+        monthlyTableView.rowSizeStyle = .medium
+        monthlyTableView.backgroundColor = .clear
+        monthlyTableView.usesAlternatingRowBackgroundColors = false
         monthlyTableView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
 
         addMonthlyColumn(id: "month", title: "月份", width: 90)
@@ -173,9 +221,14 @@ final class StatsWindowController: NSWindowController {
         let scrollView = NSScrollView()
         scrollView.documentView = monthlyTableView
         scrollView.hasVerticalScroller = true
-        scrollView.borderType = .bezelBorder
+        scrollView.borderType = .noBorder
+        scrollView.drawsBackground = false
         scrollView.translatesAutoresizingMaskIntoConstraints = false
-        stack.addArrangedSubview(scrollView)
+        let panel = RoundedPanelView()
+        panel.translatesAutoresizingMaskIntoConstraints = false
+        panel.addSubview(scrollView)
+        pin(scrollView, to: panel, insets: NSEdgeInsets(top: 6, left: 6, bottom: 6, right: 6))
+        stack.addArrangedSubview(panel)
     }
 
     private func setupChartContainers() {
@@ -229,6 +282,21 @@ final class StatsWindowController: NSWindowController {
 
         records[recordIndex] = updated
         refreshAfterRecordsChanged(selectedDate: updated.date)
+        onSave(records)
+    }
+
+    @objc private func addLeaveDay() {
+        guard let dateKey = LeaveDayPicker.run() else {
+            return
+        }
+
+        if let recordIndex = records.firstIndex(where: { $0.date == dateKey }) {
+            records[recordIndex].excludedFromStats = true
+        } else {
+            records.append(DailyRecord(date: dateKey, excludedFromStats: true))
+        }
+
+        refreshAfterRecordsChanged(selectedDate: dateKey)
         onSave(records)
     }
 
@@ -360,12 +428,22 @@ final class StatsWindowController: NSWindowController {
         return years
     }
 
+    private func styleFooterButton(_ button: NSButton) {
+        button.bezelStyle = .rounded
+        button.controlSize = .large
+        button.font = .systemFont(ofSize: 13, weight: .medium)
+    }
+
     private func pin(_ child: NSView, to parent: NSView) {
+        pin(child, to: parent, insets: NSEdgeInsetsZero)
+    }
+
+    private func pin(_ child: NSView, to parent: NSView, insets: NSEdgeInsets) {
         NSLayoutConstraint.activate([
-            child.leadingAnchor.constraint(equalTo: parent.leadingAnchor),
-            child.trailingAnchor.constraint(equalTo: parent.trailingAnchor),
-            child.topAnchor.constraint(equalTo: parent.topAnchor),
-            child.bottomAnchor.constraint(equalTo: parent.bottomAnchor)
+            child.leadingAnchor.constraint(equalTo: parent.leadingAnchor, constant: insets.left),
+            child.trailingAnchor.constraint(equalTo: parent.trailingAnchor, constant: -insets.right),
+            child.topAnchor.constraint(equalTo: parent.topAnchor, constant: insets.top),
+            child.bottomAnchor.constraint(equalTo: parent.bottomAnchor, constant: -insets.bottom)
         ])
     }
 }
@@ -481,6 +559,69 @@ extension StatsWindowController: NSTableViewDataSource, NSTableViewDelegate {
         case .complete:
             return .systemGreen
         }
+    }
+}
+
+private final class RoundedPanelView: NSView {
+    override var isFlipped: Bool {
+        true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+
+        let rect = bounds.insetBy(dx: 0.5, dy: 0.5)
+        let path = NSBezierPath(roundedRect: rect, xRadius: 12, yRadius: 12)
+
+        NSColor.controlBackgroundColor.withAlphaComponent(0.82).setFill()
+        path.fill()
+
+        NSColor.separatorColor.withAlphaComponent(0.45).setStroke()
+        path.lineWidth = 1
+        path.stroke()
+    }
+}
+
+enum LeaveDayPicker {
+    static func run() -> String? {
+        let picker = NSDatePicker()
+        picker.datePickerStyle = .textFieldAndStepper
+        picker.datePickerElements = [.yearMonthDay]
+        picker.dateValue = Date()
+        picker.widthAnchor.constraint(equalToConstant: 180).isActive = true
+
+        let container = NSStackView()
+        container.orientation = .vertical
+        container.spacing = 12
+        container.frame = NSRect(x: 0, y: 0, width: 280, height: 44)
+        container.addArrangedSubview(row(label: "日期", view: picker))
+
+        let alert = NSAlert()
+        alert.messageText = "添加请假日"
+        alert.informativeText = "该日期会被标记为不计入统计；如果当天已有记录，会保留时间并改为不计入。"
+        alert.accessoryView = container
+        alert.addButton(withTitle: "添加")
+        alert.addButton(withTitle: "取消")
+
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            return nil
+        }
+
+        return ChinaWorkdayCalendar.dateFormatter.string(from: picker.dateValue)
+    }
+
+    private static func row(label: String, view: NSView) -> NSStackView {
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.spacing = 10
+
+        let labelView = NSTextField(labelWithString: label)
+        labelView.alignment = .right
+        labelView.widthAnchor.constraint(equalToConstant: 54).isActive = true
+
+        row.addArrangedSubview(labelView)
+        row.addArrangedSubview(view)
+        return row
     }
 }
 
