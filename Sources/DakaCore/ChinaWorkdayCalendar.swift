@@ -172,7 +172,11 @@ public enum MonthlyWorkdaySummarizer {
                 return nil
             }
 
-            let dateKeys = dateKeysInMonth(year: year, month: monthNumber, upTo: month == currentMonth ? todayKey : nil)
+            let dateKeys = dateKeysInMonth(
+                year: year,
+                month: monthNumber,
+                before: month == currentMonth ? todayKey : nil
+            )
             let holidayYear = holidayYears[year]
             let workdayKeys = dateKeys
                 .filter { calendar.isWorkday(dateKey: $0, holidayYear: holidayYear) }
@@ -199,7 +203,7 @@ public enum MonthlyWorkdaySummarizer {
         }
     }
 
-    private static func dateKeysInMonth(year: Int, month: Int, upTo todayKey: String?) -> [String] {
+    private static func dateKeysInMonth(year: Int, month: Int, before cutoffDateKey: String?) -> [String] {
         var components = DateComponents()
         components.calendar = Calendar(identifier: .gregorian)
         components.timeZone = .current
@@ -219,7 +223,7 @@ public enum MonthlyWorkdaySummarizer {
             }
 
             let key = ChinaWorkdayCalendar.dateFormatter.string(from: date)
-            if let todayKey, key > todayKey {
+            if let cutoffDateKey, key >= cutoffDateKey {
                 return nil
             }
             return key

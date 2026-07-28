@@ -56,24 +56,25 @@ struct DakaStoreTests {
             DailyRecord(date: "2026-05-19", firstMatchedAt: first, lastMatchedAt: last, excludedFromStats: true),
             DailyRecord(date: "2026-05-20", firstMatchedAt: first, lastMatchedAt: last)
         ]
-        let date = try #require(ISO8601DateFormatter().date(from: "2026-05-20T12:00:00Z"))
+        let monthlyDate = try #require(ISO8601DateFormatter().date(from: "2026-05-21T12:00:00Z"))
+        let weeklyDate = try #require(ISO8601DateFormatter().date(from: "2026-05-20T12:00:00Z"))
 
         let monthly = MonthlyWorkdaySummarizer.summaries(
             records: records,
             targetSeconds: 8 * 60 * 60,
             holidayYears: [:],
-            today: date
+            today: monthlyDate
         )
         let weekly = WeeklyWorkdaySummarizer.status(
             records: records,
             targetSeconds: 24 * 60 * 60,
             holidayYears: [:],
-            at: date
+            at: weeklyDate
         )
 
         #expect(monthly.first?.workdayCount == 13)
         #expect(monthly.first?.recordedWorkdayCount == 2)
-        #expect(monthly.first?.totalSeconds == 16 * 60 * 60)
+        #expect(monthly.first?.totalSeconds == TimeInterval(16 * 60 * 60))
         #expect(weekly.workdayCount == 2)
         #expect(weekly.totalSeconds == 16 * 60 * 60)
     }
@@ -105,9 +106,38 @@ struct DakaStoreTests {
         )
 
         #expect(monthly.first?.month == "2026-06")
-        #expect(monthly.first?.workdayCount == 18)
+        #expect(monthly.first?.workdayCount == 17)
         #expect(monthly.first?.recordedWorkdayCount == 0)
         #expect(monthly.first?.totalSeconds == 0)
+    }
+
+    @Test func currentDayIsNotIncludedInMonthlyStatsUntilItEnds() throws {
+        let first = Date(timeIntervalSince1970: 1_779_250_400)
+        let records = [
+            DailyRecord(
+                date: "2026-05-19",
+                firstMatchedAt: first,
+                lastMatchedAt: first.addingTimeInterval(8 * 60 * 60)
+            ),
+            DailyRecord(
+                date: "2026-05-20",
+                firstMatchedAt: first,
+                lastMatchedAt: first.addingTimeInterval(2 * 60 * 60)
+            )
+        ]
+        let date = try #require(ISO8601DateFormatter().date(from: "2026-05-20T12:00:00Z"))
+
+        let monthly = MonthlyWorkdaySummarizer.summaries(
+            records: records,
+            targetSeconds: 8 * 60 * 60,
+            holidayYears: [:],
+            today: date
+        )
+
+        #expect(monthly.first?.workdayCount == 13)
+        #expect(monthly.first?.recordedWorkdayCount == 1)
+        #expect(monthly.first?.totalSeconds == TimeInterval(8 * 60 * 60))
+        #expect(monthly.first?.averageSeconds == TimeInterval(8 * 60 * 60) / 13)
     }
 
     @Test func migratesLegacyJSONIntoSQLite() throws {

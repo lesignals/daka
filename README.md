@@ -167,7 +167,7 @@ China workdays are loaded from the public `holiday-calendar` CN JSON data and ca
 ~/Library/Application Support/Daka/ChinaCalendar/
 ```
 
-If a year cannot be loaded yet, Daka temporarily falls back to Monday-Friday for that year. Missing workday records count as `0m`, and the current month is calculated only up to today.
+If a year cannot be loaded yet, Daka temporarily falls back to Monday-Friday for that year. Missing workday records count as `0m`, and the current month is calculated only through yesterday so an unfinished day does not lower the monthly average.
 
 ## Rest-Day Reminder
 
