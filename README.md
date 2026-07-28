@@ -2,10 +2,26 @@
 
 macOS menu bar tracker for recording the first and last time a configurable rule matches each day.
 
-## Run
+## Install
 
 ```bash
-swift run daka
+./scripts/install-autostart.sh
+```
+
+This builds `Daka.app` once, installs it at `~/Applications/Daka.app`, registers
+`local.daka.menu` as a LaunchAgent, and starts it immediately. Login startup
+launches the installed app directly; it does not rebuild the project.
+
+Existing config and clock records are kept in:
+
+```text
+~/Library/Application Support/Daka/
+```
+
+To remove only the login startup item, without deleting the app or its data:
+
+```bash
+./scripts/uninstall-autostart.sh
 ```
 
 ## Install with Homebrew
@@ -21,31 +37,27 @@ To stop it:
 brew services stop daka
 ```
 
-For a direct local start in release mode:
+The Homebrew formula also builds and runs a real app bundle so macOS can attach
+Wi-Fi location permission to a stable bundle identifier.
+
+To build a release app without installing it:
 
 ```bash
-./scripts/daka-launcher.sh
+./scripts/build-app.sh
 ```
 
-To install it as a login startup item and start it immediately:
+The default build uses an ad-hoc signature and never asks for a signing-key
+password. Release maintainers can provide a Developer ID identity explicitly:
 
 ```bash
-./scripts/install-autostart.sh
+DAKA_SIGN_IDENTITY="Developer ID Application: ..." ./scripts/build-app.sh
 ```
 
-To remove the login startup item:
+## Permission
 
-```bash
-./scripts/uninstall-autostart.sh
-```
-
-The app stores data in SQLite on first launch:
-
-```text
-~/Library/Application Support/Daka/daka.sqlite
-```
-
-Older `config.json` and `records.json` files are imported into SQLite automatically.
+Daka requests location permission only when a Wi-Fi condition is configured.
+macOS requires this permission to expose the current SSID. The menu shows the
+permission state and links to System Settings when user action is required.
 
 ## Behavior
 
@@ -72,13 +84,14 @@ Menu bar actions:
 ```text
 配置...   Open the rule editor
 统计...   Open daily records
+添加请假日... Mark a date as excluded from statistics
+暂停统计  Pause automatic record updates
 退出      Quit the menu bar app
 ```
 
 The config UI supports:
 
 ```text
-Rule name
 Match mode: all / any
 Evaluation interval
 Daily target hours
@@ -92,6 +105,9 @@ Condition parameters
 Wi-Fi SSID selection from nearby/current networks
 ```
 
+SSID matching is exact, including letter case and spaces. Time values are
+validated before saving instead of being silently replaced with defaults.
+
 The menu shows today's progress with a progress bar and a colored status marker:
 
 ```text
@@ -104,6 +120,16 @@ green   complete
 ## Storage
 
 Config is stored in `app_config`; daily records are stored in `daily_records`. The default config is:
+
+The SQLite database is:
+
+```text
+~/Library/Application Support/Daka/daka.sqlite
+```
+
+Older `config.json` and `records.json` files are imported automatically. Normal
+recording updates only the affected date rather than rewriting every historical
+row.
 
 ```json
 {
@@ -167,7 +193,11 @@ China workdays are loaded from the public `holiday-calendar` CN JSON data and ca
 ~/Library/Application Support/Daka/ChinaCalendar/
 ```
 
-If a year cannot be loaded yet, Daka temporarily falls back to Monday-Friday for that year. Missing workday records count as `0m`, and the current month is calculated only through yesterday so an unfinished day does not lower the monthly average.
+If a year cannot be loaded yet, Daka temporarily falls back to Monday-Friday
+for that year and labels the result `估算`. Requests use HTTP cache validation
+and bounded timeouts. Missing workday records count as `0m`, and the current
+month is calculated only through yesterday so an unfinished day does not lower
+the monthly average.
 
 ## Rest-Day Reminder
 
@@ -184,4 +214,5 @@ Both reminder times and messages are editable in `配置...`. Each reminder is s
 
 ```bash
 swift test
+./scripts/check-release.sh
 ```

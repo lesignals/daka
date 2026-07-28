@@ -231,12 +231,12 @@ public final class DakaStore {
     public func saveRecords(_ records: [DailyRecord]) throws {
         try transaction {
             for record in records {
-                try saveRecord(record)
+                try upsertRecord(record)
             }
         }
     }
 
-    private func saveRecord(_ record: DailyRecord) throws {
+    public func upsertRecord(_ record: DailyRecord) throws {
         let sql = """
         INSERT INTO daily_records(date, first_matched_at, last_matched_at, excluded_from_stats, updated_at)
         VALUES(?, ?, ?, ?, ?)
@@ -266,6 +266,7 @@ public final class DakaStore {
         if sqlite3_open_v2(paths.databaseURL.path, &db, flags, nil) != SQLITE_OK {
             throw StoreError.sqlite(message: lastErrorMessage)
         }
+        sqlite3_busy_timeout(db, 3_000)
     }
 
     private func migrateSchema() throws {

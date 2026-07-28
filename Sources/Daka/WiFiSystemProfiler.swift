@@ -1,26 +1,67 @@
+import Darwin
+import DakaCore
 import Foundation
 
 struct WiFiSystemProfiler {
-    struct Snapshot {
-        var currentSSID: String?
-        var visibleSSIDs: [String]
-    }
+    typealias Snapshot = WiFiProfilerSnapshot
 
-    static func snapshot() -> Snapshot {
-        guard let output = runSystemProfiler() else {
+    private static let cacheLock = NSLock()
+    private static let executionLock = NSLock()
+    private static var cachedSnapshot: Snapshot?
+    private static var cachedAt: Date?
+
+    static func snapshot(maxAge: TimeInterval = 30, timeout: TimeInterval = 5) -> Snapshot {
+        if let cached = cachedSnapshotIfFresh(maxAge: maxAge) {
+            return cached
+        }
+
+        executionLock.lock()
+        defer { executionLock.unlock() }
+
+        if let cached = cachedSnapshotIfFresh(maxAge: maxAge) {
+            return cached
+        }
+
+        guard let output = runSystemProfiler(timeout: timeout) else {
             return Snapshot(currentSSID: nil, visibleSSIDs: [])
         }
 
-        return parse(output)
+        let snapshot = WiFiProfilerParser.parse(output)
+        cacheLock.lock()
+        cachedSnapshot = snapshot
+        cachedAt = Date()
+        cacheLock.unlock()
+        return snapshot
     }
 
-    private static func runSystemProfiler() -> String? {
+    private static func cachedSnapshotIfFresh(maxAge: TimeInterval) -> Snapshot? {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        guard let cachedSnapshot, let cachedAt, Date().timeIntervalSince(cachedAt) <= maxAge else {
+            return nil
+        }
+        return cachedSnapshot
+    }
+
+    private static func runSystemProfiler(timeout: TimeInterval) -> String? {
         let process = Process()
-        let pipe = Pipe()
+        let temporaryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Daka-WiFi-\(UUID().uuidString).txt")
+        guard FileManager.default.createFile(atPath: temporaryURL.path, contents: nil),
+              let outputHandle = try? FileHandle(forWritingTo: temporaryURL) else {
+            return nil
+        }
+        defer {
+            try? outputHandle.close()
+            try? FileManager.default.removeItem(at: temporaryURL)
+        }
+
+        let termination = DispatchSemaphore(value: 0)
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/system_profiler")
-        process.arguments = ["SPAirPortDataType"]
-        process.standardOutput = pipe
+        process.arguments = ["SPAirPortDataType", "-detailLevel", "mini"]
+        process.standardOutput = outputHandle
         process.standardError = Pipe()
+        process.terminationHandler = { _ in termination.signal() }
 
         do {
             try process.run()
@@ -28,76 +69,24 @@ struct WiFiSystemProfiler {
             return nil
         }
 
-        process.waitUntilExit()
+        if termination.wait(timeout: .now() + timeout) == .timedOut {
+            process.terminate()
+            if termination.wait(timeout: .now() + 1) == .timedOut {
+                kill(process.processIdentifier, SIGKILL)
+                _ = termination.wait(timeout: .now() + 1)
+            }
+            return nil
+        }
 
         guard process.terminationStatus == 0 else {
             return nil
         }
 
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        try? outputHandle.synchronize()
+        let data = try? Data(contentsOf: temporaryURL)
+        guard let data else {
+            return nil
+        }
         return String(data: data, encoding: .utf8)
-    }
-
-    private static func parse(_ output: String) -> Snapshot {
-        var currentSSID: String?
-        var visible = Set<String>()
-        var inCurrentNetworkInformation = false
-        var inOtherLocalNetworks = false
-
-        for rawLine in output.split(separator: "\n", omittingEmptySubsequences: false) {
-            let line = String(rawLine)
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-
-            if trimmed == "Current Network Information:" {
-                inCurrentNetworkInformation = true
-                inOtherLocalNetworks = false
-                continue
-            }
-
-            if trimmed == "Other Local Wi-Fi Networks:" {
-                inCurrentNetworkInformation = false
-                inOtherLocalNetworks = true
-                continue
-            }
-
-            guard trimmed.hasSuffix(":") else {
-                continue
-            }
-
-            let name = String(trimmed.dropLast())
-            guard isLikelySSIDLine(name) else {
-                continue
-            }
-
-            if inCurrentNetworkInformation, currentSSID == nil {
-                currentSSID = name
-                visible.insert(name)
-            } else if inOtherLocalNetworks {
-                visible.insert(name)
-            }
-        }
-
-        return Snapshot(
-            currentSSID: currentSSID,
-            visibleSSIDs: visible.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
-        )
-    }
-
-    private static func isLikelySSIDLine(_ value: String) -> Bool {
-        let ignored = [
-            "Wi-Fi",
-            "Software Versions",
-            "Interfaces",
-            "Current Network Information",
-            "Other Local Wi-Fi Networks",
-            "AirDrop",
-            "Auto Unlock"
-        ]
-
-        if ignored.contains(value) {
-            return false
-        }
-
-        return !value.contains(":")
     }
 }

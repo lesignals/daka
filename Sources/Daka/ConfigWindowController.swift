@@ -4,10 +4,9 @@ import Foundation
 
 final class ConfigWindowController: NSWindowController {
     private var config: AppConfig
-    private let onSave: (AppConfig) -> Void
+    private let onSave: (AppConfig) -> Bool
     private var drafts: [ConditionDraft]
 
-    private let nameField = NSTextField()
     private let matchModePopup = NSPopUpButton()
     private let intervalField = NSTextField()
     private let targetHoursField = NSTextField()
@@ -22,7 +21,7 @@ final class ConfigWindowController: NSWindowController {
     private let typePopup = NSPopUpButton()
     private let primaryField = NSTextField()
     private let secondaryField = NSTextField()
-    private let ssidPopup = NSPopUpButton()
+    private let ssidComboBox = NSComboBox()
     private let refreshSSIDsButton = NSButton(title: "刷新", target: nil, action: nil)
     private let detailLabel = NSTextField(labelWithString: "")
     private let saveButton = NSButton(title: "保存", target: nil, action: nil)
@@ -31,19 +30,21 @@ final class ConfigWindowController: NSWindowController {
     private var ssidRow: NSStackView!
     private var ssidOptions: [String] = []
     private var ssidLoadGeneration = 0
+    private var isUpdatingSSIDOptions = false
 
-    init(config: AppConfig, onSave: @escaping (AppConfig) -> Void) {
+    init(config: AppConfig, onSave: @escaping (AppConfig) -> Bool) {
         self.config = config
         self.onSave = onSave
         self.drafts = config.rule.conditions.map(ConditionDraft.init(condition:))
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 760, height: 640),
+            contentRect: NSRect(x: 0, y: 0, width: 760, height: 520),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = "Daka 配置"
+        window.minSize = NSSize(width: 680, height: 460)
         window.center()
 
         super.init(window: window)
@@ -69,8 +70,8 @@ final class ConfigWindowController: NSWindowController {
 
         let root = NSStackView()
         root.orientation = .vertical
-        root.spacing = 14
-        root.edgeInsets = NSEdgeInsets(top: 18, left: 18, bottom: 18, right: 18)
+        root.spacing = 16
+        root.edgeInsets = NSEdgeInsets(top: 20, left: 22, bottom: 18, right: 22)
         root.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(root)
 
@@ -81,75 +82,90 @@ final class ConfigWindowController: NSWindowController {
             root.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
         ])
 
-        root.addArrangedSubview(formRow(label: "规则名称", view: nameField))
+        let tabView = NSTabView()
+        root.addArrangedSubview(tabView)
 
         matchModePopup.addItems(withTitles: ["全部满足", "任一满足"])
-        root.addArrangedSubview(formRow(label: "匹配方式", view: matchModePopup))
 
-        intervalField.placeholderString = "60"
-        root.addArrangedSubview(formRow(label: "检查间隔(秒)", view: intervalField))
+        let targetTab = tabContent(in: tabView, title: "目标")
 
         targetHoursField.placeholderString = "10.5"
-        root.addArrangedSubview(formRow(label: "目标时长(小时)", view: targetHoursField))
+        targetTab.addArrangedSubview(formRow(label: "目标时长(小时)", view: targetHoursField, width: 120))
 
         monthlyAverageTargetHoursField.placeholderString = "10.5"
-        root.addArrangedSubview(formRow(label: "月均达标(小时)", view: monthlyAverageTargetHoursField))
+        targetTab.addArrangedSubview(formRow(label: "月均达标(小时)", view: monthlyAverageTargetHoursField, width: 120))
 
         weeklyTargetHoursField.placeholderString = "47.5"
-        root.addArrangedSubview(formRow(label: "周目标(小时)", view: weeklyTargetHoursField))
-        root.addArrangedSubview(formRow(label: "休息日前提醒", view: restDayReminderEnabledButton))
+        targetTab.addArrangedSubview(formRow(label: "周目标(小时)", view: weeklyTargetHoursField, width: 120))
+        targetTab.addArrangedSubview(NSView())
 
-        restDayReminderTimeField.placeholderString = AppConfig.defaultRestDayReminderTime
-        root.addArrangedSubview(formRow(label: "休息前时间", view: restDayReminderTimeField))
-
-        dayBeforeRestReminderTimeField.placeholderString = AppConfig.defaultDayBeforeRestReminderTime
-        root.addArrangedSubview(formRow(label: "前一天时间", view: dayBeforeRestReminderTimeField))
-
-        restDayReminderMessageField.placeholderString = AppConfig.defaultRestDayReminderMessage
-        root.addArrangedSubview(formRow(label: "休息前文案", view: restDayReminderMessageField))
-
-        dayBeforeRestReminderMessageField.placeholderString = AppConfig.defaultDayBeforeRestReminderMessage
-        root.addArrangedSubview(formRow(label: "前一天文案", view: dayBeforeRestReminderMessageField))
+        let conditionTab = tabContent(in: tabView, title: "条件")
+        intervalField.placeholderString = "60"
+        conditionTab.addArrangedSubview(formRow(label: "检查间隔(秒)", view: intervalField, width: 120))
+        conditionTab.addArrangedSubview(formRow(label: "匹配方式", view: matchModePopup, width: 110))
 
         let body = NSStackView()
         body.orientation = .horizontal
         body.spacing = 16
-        root.addArrangedSubview(body)
-        body.heightAnchor.constraint(equalToConstant: 240).isActive = true
+        conditionTab.addArrangedSubview(body)
+        body.heightAnchor.constraint(equalToConstant: 300).isActive = true
 
         setupTable()
+        let listColumn = NSStackView()
+        listColumn.orientation = .vertical
+        listColumn.spacing = 8
+        body.addArrangedSubview(listColumn)
+
         let scrollView = NSScrollView()
         scrollView.documentView = tableView
         scrollView.hasVerticalScroller = true
         scrollView.borderType = .bezelBorder
         scrollView.widthAnchor.constraint(equalToConstant: 280).isActive = true
-        body.addArrangedSubview(scrollView)
+        scrollView.heightAnchor.constraint(equalToConstant: 260).isActive = true
+        listColumn.addArrangedSubview(scrollView)
+
+        let conditionButtons = NSStackView()
+        conditionButtons.orientation = .horizontal
+        conditionButtons.spacing = 8
+        listColumn.addArrangedSubview(conditionButtons)
+
+        let addButton = NSButton(title: "添加条件", target: self, action: #selector(addCondition))
+        let removeButton = NSButton(title: "删除条件", target: self, action: #selector(removeCondition))
+        conditionButtons.addArrangedSubview(addButton)
+        conditionButtons.addArrangedSubview(removeButton)
+        conditionButtons.addArrangedSubview(NSView())
 
         let editor = NSStackView()
         editor.orientation = .vertical
         editor.spacing = 10
         body.addArrangedSubview(editor)
+        editor.widthAnchor.constraint(equalToConstant: 380).isActive = true
 
         typePopup.addItems(withTitles: ConditionDraft.Kind.allCases.map(\.title))
         typePopup.target = self
         typePopup.action = #selector(typeChanged)
 
-        editor.addArrangedSubview(formRow(label: "条件类型", view: typePopup))
+        editor.addArrangedSubview(formRow(label: "条件类型", view: typePopup, width: 150))
 
-        ssidPopup.target = self
-        ssidPopup.action = #selector(ssidChanged)
+        ssidComboBox.delegate = self
+        ssidComboBox.completes = true
+        ssidComboBox.numberOfVisibleItems = 8
+        ssidComboBox.hasVerticalScroller = true
+        ssidComboBox.target = self
+        ssidComboBox.action = #selector(ssidChanged)
         refreshSSIDsButton.target = self
         refreshSSIDsButton.action = #selector(refreshSSIDOptions)
         let ssidControls = NSStackView()
         ssidControls.orientation = .horizontal
         ssidControls.spacing = 8
-        ssidControls.addArrangedSubview(ssidPopup)
+        ssidControls.addArrangedSubview(ssidComboBox)
         ssidControls.addArrangedSubview(refreshSSIDsButton)
+        ssidComboBox.widthAnchor.constraint(equalToConstant: 250).isActive = true
         refreshSSIDsButton.widthAnchor.constraint(equalToConstant: 58).isActive = true
 
-        ssidRow = formRow(label: "Wi-Fi", view: ssidControls)
-        primaryRow = formRow(label: "参数 1", view: primaryField)
-        secondaryRow = formRow(label: "参数 2", view: secondaryField)
+        ssidRow = formRow(label: "Wi-Fi", view: ssidControls, fills: true)
+        primaryRow = formRow(label: "参数 1", view: primaryField, fills: true)
+        secondaryRow = formRow(label: "参数 2", view: secondaryField, fills: true)
         editor.addArrangedSubview(ssidRow)
         editor.addArrangedSubview(primaryRow)
         editor.addArrangedSubview(secondaryRow)
@@ -157,20 +173,26 @@ final class ConfigWindowController: NSWindowController {
         detailLabel.textColor = .secondaryLabelColor
         detailLabel.lineBreakMode = .byWordWrapping
         detailLabel.maximumNumberOfLines = 4
-        editor.addArrangedSubview(detailLabel)
-
-        let conditionButtons = NSStackView()
-        conditionButtons.orientation = .horizontal
-        conditionButtons.spacing = 8
-        editor.addArrangedSubview(conditionButtons)
-
-        let addButton = NSButton(title: "添加条件", target: self, action: #selector(addCondition))
-        let removeButton = NSButton(title: "删除条件", target: self, action: #selector(removeCondition))
-        conditionButtons.addArrangedSubview(addButton)
-        conditionButtons.addArrangedSubview(removeButton)
+        editor.addArrangedSubview(formRow(label: "", view: detailLabel, fills: true))
 
         let spacer = NSView()
         editor.addArrangedSubview(spacer)
+
+        let reminderTab = tabContent(in: tabView, title: "提醒")
+        reminderTab.addArrangedSubview(formRow(label: "提醒开关", view: restDayReminderEnabledButton))
+
+        restDayReminderTimeField.placeholderString = AppConfig.defaultRestDayReminderTime
+        reminderTab.addArrangedSubview(formRow(label: "休息前时间", view: restDayReminderTimeField, width: 120))
+
+        dayBeforeRestReminderTimeField.placeholderString = AppConfig.defaultDayBeforeRestReminderTime
+        reminderTab.addArrangedSubview(formRow(label: "前一天时间", view: dayBeforeRestReminderTimeField, width: 120))
+
+        restDayReminderMessageField.placeholderString = AppConfig.defaultRestDayReminderMessage
+        reminderTab.addArrangedSubview(formRow(label: "休息前文案", view: restDayReminderMessageField, fills: true))
+
+        dayBeforeRestReminderMessageField.placeholderString = AppConfig.defaultDayBeforeRestReminderMessage
+        reminderTab.addArrangedSubview(formRow(label: "前一天文案", view: dayBeforeRestReminderMessageField, fills: true))
+        reminderTab.addArrangedSubview(NSView())
 
         let footer = NSStackView()
         footer.orientation = .horizontal
@@ -207,22 +229,44 @@ final class ConfigWindowController: NSWindowController {
         tableView.action = #selector(selectionChanged)
     }
 
-    private func formRow(label: String, view: NSView) -> NSStackView {
+    private func tabContent(in tabView: NSTabView, title: String) -> NSStackView {
+        let container = NSStackView()
+        container.orientation = .vertical
+        container.spacing = 12
+        container.edgeInsets = NSEdgeInsets(top: 16, left: 12, bottom: 12, right: 12)
+
+        let item = NSTabViewItem(identifier: title)
+        item.label = title
+        item.view = container
+        tabView.addTabViewItem(item)
+
+        return container
+    }
+
+    private func formRow(label: String, view: NSView, fills: Bool = false, width: CGFloat? = nil) -> NSStackView {
         let row = NSStackView()
         row.orientation = .horizontal
         row.spacing = 10
 
         let labelView = NSTextField(labelWithString: label)
         labelView.alignment = .right
-        labelView.widthAnchor.constraint(equalToConstant: 92).isActive = true
+        labelView.textColor = label.isEmpty ? .clear : .labelColor
+        labelView.widthAnchor.constraint(equalToConstant: 110).isActive = true
         row.addArrangedSubview(labelView)
         row.addArrangedSubview(view)
+
+        if let width {
+            view.widthAnchor.constraint(equalToConstant: width).isActive = true
+        }
+
+        if !fills {
+            row.addArrangedSubview(NSView())
+        }
 
         return row
     }
 
     private func loadConfig() {
-        nameField.stringValue = config.rule.name
         matchModePopup.selectItem(at: config.rule.matchMode == .all ? 0 : 1)
         intervalField.stringValue = String(Int(config.evaluationIntervalSeconds))
         targetHoursField.stringValue = DakaFormatters.decimalHours(config.targetDurationSeconds)
@@ -243,7 +287,8 @@ final class ConfigWindowController: NSWindowController {
 
     @objc private func addCondition() {
         saveEditorIntoSelectedDraft()
-        drafts.append(ConditionDraft(kind: .screenUnlocked))
+        let kind = ConditionDraft.Kind.allCases.first { !isDuplicateSingleton(kind: $0, ignoring: nil) } ?? .wifiConnected
+        drafts.append(ConditionDraft(kind: kind))
         tableView.reloadData()
         tableView.selectRowIndexes(IndexSet(integer: drafts.count - 1), byExtendingSelection: false)
         loadSelectedDraft()
@@ -270,6 +315,12 @@ final class ConfigWindowController: NSWindowController {
     @objc private func typeChanged() {
         guard tableView.selectedRow >= 0, tableView.selectedRow < drafts.count,
               let kind = ConditionDraft.Kind(title: typePopup.titleOfSelectedItem ?? "") else {
+            return
+        }
+
+        if isDuplicateSingleton(kind: kind, ignoring: tableView.selectedRow) {
+            showAlert(message: "\(kind.title) 已经存在，不能重复添加。")
+            loadSelectedDraft()
             return
         }
 
@@ -301,6 +352,7 @@ final class ConfigWindowController: NSWindowController {
         let draft = drafts[selected]
         typePopup.selectItem(withTitle: draft.kind.title)
         if draft.kind == .wifiConnected {
+            ssidComboBox.stringValue = draft.primary
             loadSSIDOptionsAsync(keeping: draft.primary)
         }
         primaryField.stringValue = draft.primary
@@ -339,17 +391,16 @@ final class ConfigWindowController: NSWindowController {
     }
 
     private func selectedSSID() -> String {
-        let title = ssidPopup.titleOfSelectedItem ?? ""
-        return title == "未发现可选 Wi-Fi" || title == "正在加载..." ? "" : title
+        let value = ssidComboBox.stringValue
+        return value == "正在加载..." ? "" : value
     }
 
     private func loadSSIDOptionsAsync(keeping selected: String) {
         ssidLoadGeneration += 1
         let generation = ssidLoadGeneration
 
-        ssidPopup.removeAllItems()
-        ssidPopup.addItem(withTitle: "正在加载...")
-        ssidPopup.isEnabled = false
+        ssidComboBox.placeholderString = "正在加载..."
+        ssidComboBox.isEnabled = true
         refreshSSIDsButton.isEnabled = false
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -366,30 +417,33 @@ final class ConfigWindowController: NSWindowController {
     }
 
     private func applySSIDOptions(_ options: [String], keeping selected: String) {
+        let textBeforeReload = ssidComboBox.stringValue
+        isUpdatingSSIDOptions = true
+        defer {
+            ssidComboBox.stringValue = textBeforeReload
+            isUpdatingSSIDOptions = false
+        }
+
         ssidOptions = options
-        ssidPopup.removeAllItems()
+        ssidComboBox.removeAllItems()
         refreshSSIDsButton.isEnabled = true
-
-        if ssidOptions.isEmpty {
-            ssidPopup.addItem(withTitle: "未发现可选 Wi-Fi")
-            ssidPopup.isEnabled = false
-            return
-        }
-
-        ssidPopup.isEnabled = true
-        ssidPopup.addItems(withTitles: ssidOptions)
-        if !selected.isEmpty, ssidOptions.contains(selected) {
-            ssidPopup.selectItem(withTitle: selected)
-        } else {
-            ssidPopup.selectItem(at: 0)
-        }
-
-        saveEditorIntoSelectedDraft()
-        tableView.reloadData()
+        ssidComboBox.isEnabled = true
+        ssidComboBox.placeholderString = ssidOptions.isEmpty ? "未发现可选 Wi-Fi，可手动输入" : "选择或输入 Wi-Fi 名称"
+        ssidComboBox.addItems(withObjectValues: ssidOptions)
     }
 
     @objc private func save() {
         saveEditorIntoSelectedDraft()
+
+        if let duplicate = duplicateSingletonKind() {
+            showAlert(message: "\(duplicate.title) 已经存在，不能重复添加。")
+            return
+        }
+
+        if let invalid = drafts.first(where: { $0.condition == nil }) {
+            showAlert(message: "\(invalid.kind.title) 条件还没填完整。")
+            return
+        }
 
         let conditions = drafts.compactMap(\.condition)
         guard !conditions.isEmpty else {
@@ -397,35 +451,80 @@ final class ConfigWindowController: NSWindowController {
             return
         }
 
-        let interval = TimeInterval(Int(intervalField.stringValue) ?? 60)
-        let targetHours = Double(targetHoursField.stringValue) ?? 10.5
-        let monthlyAverageTargetHours = Double(monthlyAverageTargetHoursField.stringValue) ?? targetHours
-        let weeklyTargetHours = Double(weeklyTargetHoursField.stringValue) ?? 47.5
-        let restDayReminderTime = validTimeString(restDayReminderTimeField.stringValue, fallback: AppConfig.defaultRestDayReminderTime)
-        let dayBeforeRestReminderTime = validTimeString(dayBeforeRestReminderTimeField.stringValue, fallback: AppConfig.defaultDayBeforeRestReminderTime)
+        guard let interval = DakaInputValidator.evaluationInterval(intervalField.stringValue) else {
+            showAlert(message: "检查间隔必须是 10 到 86400 之间的整数秒。")
+            return
+        }
+        guard let targetHours = DakaInputValidator.positiveNumber(targetHoursField.stringValue, range: 0.25...24) else {
+            showAlert(message: "目标时长必须是 0.25 到 24 之间的小时数。")
+            return
+        }
+        guard let monthlyAverageTargetHours = DakaInputValidator.positiveNumber(
+            monthlyAverageTargetHoursField.stringValue,
+            range: 0.25...24
+        ) else {
+            showAlert(message: "月均目标必须是 0.25 到 24 之间的小时数。")
+            return
+        }
+        guard let weeklyTargetHours = DakaInputValidator.positiveNumber(
+            weeklyTargetHoursField.stringValue,
+            range: 0.25...168
+        ) else {
+            showAlert(message: "周目标必须是 0.25 到 168 之间的小时数。")
+            return
+        }
+        guard let restDayReminderTime = DakaInputValidator.normalizedTime(restDayReminderTimeField.stringValue) else {
+            showAlert(message: "休息前提醒时间格式应为 HH:mm，例如 09:30。")
+            return
+        }
+        guard let dayBeforeRestReminderTime = DakaInputValidator.normalizedTime(dayBeforeRestReminderTimeField.stringValue) else {
+            showAlert(message: "前一天提醒时间格式应为 HH:mm，例如 18:00。")
+            return
+        }
         let restDayReminderMessage = restDayReminderMessageField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let dayBeforeRestReminderMessage = dayBeforeRestReminderMessageField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        let ruleName = nameField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let nextConfig = AppConfig(
             rule: TimerRule(
-                name: ruleName.isEmpty ? "Default" : ruleName,
+                name: config.rule.name.isEmpty ? "Default" : config.rule.name,
                 matchMode: matchModePopup.indexOfSelectedItem == 0 ? .all : .any,
                 conditions: conditions
             ),
-            evaluationIntervalSeconds: max(10, interval),
-            targetDurationSeconds: max(0.25, targetHours) * 60 * 60,
-            monthlyAverageTargetSeconds: max(0.25, monthlyAverageTargetHours) * 60 * 60,
+            evaluationIntervalSeconds: interval,
+            targetDurationSeconds: targetHours * 60 * 60,
+            monthlyAverageTargetSeconds: monthlyAverageTargetHours * 60 * 60,
             restDayReminderEnabled: restDayReminderEnabledButton.state == .on,
-            weeklyTargetSeconds: max(0.25, weeklyTargetHours) * 60 * 60,
+            weeklyTargetSeconds: weeklyTargetHours * 60 * 60,
             restDayReminderTime: restDayReminderTime,
             dayBeforeRestReminderTime: dayBeforeRestReminderTime,
             restDayReminderMessage: restDayReminderMessage.isEmpty ? AppConfig.defaultRestDayReminderMessage : restDayReminderMessage,
             dayBeforeRestReminderMessage: dayBeforeRestReminderMessage.isEmpty ? AppConfig.defaultDayBeforeRestReminderMessage : dayBeforeRestReminderMessage
         )
 
-        onSave(nextConfig)
-        close()
+        if onSave(nextConfig) {
+            close()
+        }
+    }
+
+    private func isDuplicateSingleton(kind: ConditionDraft.Kind, ignoring index: Int?) -> Bool {
+        guard kind.isSingleton else {
+            return false
+        }
+
+        return drafts.enumerated().contains { offset, draft in
+            offset != index && draft.kind == kind
+        }
+    }
+
+    private func duplicateSingletonKind() -> ConditionDraft.Kind? {
+        var seen = Set<ConditionDraft.Kind>()
+        for draft in drafts where draft.kind.isSingleton {
+            if seen.contains(draft.kind) {
+                return draft.kind
+            }
+            seen.insert(draft.kind)
+        }
+        return nil
     }
 
     @objc private func cancel() {
@@ -438,25 +537,9 @@ final class ConfigWindowController: NSWindowController {
         alert.runModal()
     }
 
-    private func validTimeString(_ value: String, fallback: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        let pattern = #"^([01]?[0-9]|2[0-3]):[0-5][0-9]$"#
-        guard trimmed.range(of: pattern, options: .regularExpression) != nil else {
-            return fallback
-        }
-
-        let parts = trimmed.split(separator: ":")
-        guard parts.count == 2,
-              let hour = Int(parts[0]),
-              let minute = Int(parts[1]) else {
-            return fallback
-        }
-
-        return String(format: "%02d:%02d", hour, minute)
-    }
 }
 
-extension ConfigWindowController: NSTableViewDataSource, NSTableViewDelegate {
+extension ConfigWindowController: NSTableViewDataSource, NSTableViewDelegate, NSComboBoxDelegate {
     func numberOfRows(in tableView: NSTableView) -> Int {
         drafts.count
     }
@@ -468,10 +551,32 @@ extension ConfigWindowController: NSTableViewDataSource, NSTableViewDelegate {
         field.stringValue = drafts[row].summary
         return field
     }
+
+    func comboBoxSelectionDidChange(_ notification: Notification) {
+        guard !isUpdatingSSIDOptions else {
+            return
+        }
+
+        saveEditorIntoSelectedDraft()
+        tableView.reloadData()
+    }
+
+    func controlTextDidChange(_ notification: Notification) {
+        guard !isUpdatingSSIDOptions else {
+            return
+        }
+
+        guard notification.object as? NSComboBox === ssidComboBox else {
+            return
+        }
+
+        saveEditorIntoSelectedDraft()
+        tableView.reloadData()
+    }
 }
 
 private struct ConditionDraft {
-    enum Kind: CaseIterable {
+    enum Kind: CaseIterable, Hashable {
         case screenUnlocked
         case wifiConnected
         case powerConnected
@@ -521,6 +626,15 @@ private struct ConditionDraft {
             case .timeRange: return "当前时间落在范围内时满足，支持跨午夜。"
             }
         }
+
+        var isSingleton: Bool {
+            switch self {
+            case .screenUnlocked, .powerConnected:
+                return true
+            case .wifiConnected, .networkReachable, .timeRange:
+                return false
+            }
+        }
     }
 
     var kind: Kind
@@ -565,7 +679,11 @@ private struct ConditionDraft {
             }
             return .networkReachable(host: primary, port: port)
         case .timeRange:
-            return primary.isEmpty || secondary.isEmpty ? nil : .timeRange(start: primary, end: secondary)
+            guard let start = DakaInputValidator.normalizedTime(primary),
+                  let end = DakaInputValidator.normalizedTime(secondary) else {
+                return nil
+            }
+            return .timeRange(start: start, end: end)
         }
     }
 

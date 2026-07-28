@@ -6,14 +6,34 @@ import IOKit.ps
 import Network
 
 final class MacConditionChecker: ConditionChecking {
-    var isScreenSaverRunning = false
+    private struct Endpoint: Hashable {
+        var host: String
+        var port: Int
+    }
+
+    private let stateLock = NSLock()
+    private var screenSaverRunning = false
+    private var reachabilityCache: [Endpoint: (checkedAt: Date, reachable: Bool)] = [:]
+
+    var isScreenSaverRunning: Bool {
+        get {
+            stateLock.lock()
+            defer { stateLock.unlock() }
+            return screenSaverRunning
+        }
+        set {
+            stateLock.lock()
+            screenSaverRunning = newValue
+            stateLock.unlock()
+        }
+    }
 
     func evaluate(_ condition: TimerCondition, at date: Date) -> Bool {
         switch condition {
         case .screenUnlocked:
             return isScreenUnlocked() && !isScreenSaverRunning
         case let .wifiConnected(ssid):
-            return currentSSID() == ssid
+            return wifiSSIDMatches(current: currentSSID(), expected: ssid)
         case .powerConnected:
             return isPowerConnected()
         case let .networkReachable(host, port):
@@ -39,11 +59,21 @@ final class MacConditionChecker: ConditionChecking {
         return WiFiSystemProfiler.snapshot().currentSSID
     }
 
+    private func wifiSSIDMatches(current: String?, expected: String) -> Bool {
+        WiFiSSIDMatcher.matches(current: current, expected: expected)
+    }
+
     private func isPowerConnected() -> Bool {
         IOPSCopyExternalPowerAdapterDetails()?.takeRetainedValue() != nil
     }
 
     private func isReachable(host: String, port: Int) -> Bool {
+        let endpoint = Endpoint(host: host, port: port)
+        if let cached = reachabilityCache[endpoint],
+           Date().timeIntervalSince(cached.checkedAt) <= 15 {
+            return cached.reachable
+        }
+
         guard let nwPort = NWEndpoint.Port(rawValue: UInt16(port)) else {
             return false
         }
@@ -69,6 +99,7 @@ final class MacConditionChecker: ConditionChecking {
         connection.start(queue: queue)
         _ = semaphore.wait(timeout: .now() + 2)
         connection.cancel()
+        reachabilityCache[endpoint] = (Date(), reachable)
         return reachable
     }
 

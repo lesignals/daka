@@ -1,4 +1,5 @@
 import AppKit
+import CoreLocation
 import DakaCore
 import Foundation
 
@@ -10,9 +11,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var currentRecord: DailyRecord?
     private let checker = MacConditionChecker()
     private let recorder = DailyRecorder()
-    private var store: DakaStore!
-    private var paths: DakaPaths!
+    private var store: DakaStore?
+    private var storageError: String?
     private var lastMatched = false
+    private let evaluationQueue = DispatchQueue(label: "local.daka.menu.condition-evaluation", qos: .userInitiated)
+    private var evaluationInProgress = false
+    private var evaluationRequestedWhileBusy = false
     private var configWindowController: ConfigWindowController?
     private var statsWindowController: StatsWindowController?
     private var isShowingClockInReminder = false
@@ -20,6 +24,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let chinaCalendar = ChinaWorkdayCalendar()
     private var holidayYears: [Int: ChinaHolidayYear] = [:]
     private var statsPaused = UserDefaults.standard.bool(forKey: "Daka.statsPaused")
+    private lazy var locationPermissionRequester = LocationPermissionRequester { [weak self] in
+        self?.renderMenu()
+        self?.evaluateAndRender()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -27,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupChinaCalendar()
         setupStatusItem()
         setupNotifications()
+        requestWiFiPermissionIfNeeded()
         evaluateAndRender()
         startTimer()
     }
@@ -37,15 +46,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setupStore() {
         do {
-            paths = try DakaPaths()
-            store = try DakaStore(paths: paths)
-            config = try store.loadConfig()
-            records = try store.loadRecords()
+            let paths = try DakaPaths()
+            let openedStore = try DakaStore(paths: paths)
+            store = openedStore
+            config = try openedStore.loadConfig()
+            records = try openedStore.loadRecords()
             currentRecord = records.first { $0.date == recorder.dateKey(for: Date()) }
+            storageError = nil
         } catch {
+            store = nil
             config = .default
             records = []
             currentRecord = nil
+            storageError = "无法打开数据存储：\(error.localizedDescription)"
             NSLog("Daka storage setup failed: \(error)")
         }
     }
@@ -98,9 +111,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func evaluateAndRender() {
+        guard !evaluationInProgress else {
+            evaluationRequestedWhileBusy = true
+            return
+        }
+
+        evaluationInProgress = true
         let now = Date()
-        let evaluator = RuleEvaluator(checker: checker)
-        let matched = evaluator.evaluate(config.rule, at: now)
+        let rule = config.rule
+        let checker = checker
+
+        evaluationQueue.async { [weak self] in
+            let evaluator = RuleEvaluator(checker: checker)
+            let matched = evaluator.evaluate(rule, at: now)
+            DispatchQueue.main.async {
+                self?.finishEvaluation(matched: matched, at: now)
+            }
+        }
+    }
+
+    private func finishEvaluation(matched: Bool, at now: Date) {
+        evaluationInProgress = false
         let shouldRecord = matched && !statsPaused
 
         currentRecord = recorder.update(record: currentRecord, matched: false, at: now)
@@ -119,21 +150,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         renderStatusTitle()
         renderMenu()
+
+        if evaluationRequestedWhileBusy {
+            evaluationRequestedWhileBusy = false
+            evaluateAndRender()
+        }
     }
 
     private func persistCurrentRecord() {
-        guard let currentRecord, store != nil else {
+        guard let currentRecord else {
             return
         }
 
         records.removeAll { $0.date == currentRecord.date }
         records.append(currentRecord)
 
-        do {
-            try store.saveRecords(records)
-        } catch {
-            NSLog("Daka record save failed: \(error)")
-        }
+        _ = persist(record: currentRecord, operation: "保存打卡记录", presentError: false)
     }
 
     private func renderStatusTitle() {
@@ -161,7 +193,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(progressMenuItem())
         menu.addItem(.separator())
         menu.addItem(withTitle: "当前状态：\(statusText)", action: nil, keyEquivalent: "")
-        menu.addItem(withTitle: "规则：\(config.rule.name)", action: nil, keyEquivalent: "")
+
+        if requiresWiFiPermission {
+            let permissionStatus = locationPermissionRequester.status
+            let item = NSMenuItem(
+                title: "Wi-Fi 权限：\(permissionStatus.title)",
+                action: permissionStatus.needsUserAction ? #selector(openLocationSettings) : nil,
+                keyEquivalent: ""
+            )
+            item.target = self
+            menu.addItem(item)
+        }
+
+        if storageError != nil {
+            let item = NSMenuItem(title: "数据存储：异常（点击查看）", action: #selector(showStorageError), keyEquivalent: "")
+            item.target = self
+            item.attributedTitle = NSAttributedString(
+                string: item.title,
+                attributes: [.foregroundColor: NSColor.systemRed]
+            )
+            menu.addItem(item)
+        }
         menu.addItem(.separator())
 
         if lastMatched && currentRecord?.firstMatchedAt == nil {
@@ -262,7 +314,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let controller = ConfigWindowController(config: config) { [weak self] nextConfig in
-            self?.saveConfig(nextConfig)
+            self?.saveConfig(nextConfig) ?? false
         }
         configWindowController = controller
         controller.showWindow(nil)
@@ -293,8 +345,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             records: records,
             targetDurationSeconds: config.targetDurationSeconds,
             monthlyAverageTargetSeconds: config.monthlyAverageTargetSeconds
-        ) { [weak self] updatedRecords in
-            self?.saveRecordsFromStats(updatedRecords)
+        ) { [weak self] updatedRecord in
+            self?.saveRecordFromStats(updatedRecord) ?? false
         }
         statsWindowController = controller
         controller.showWindow(nil)
@@ -317,45 +369,125 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func markLeaveDay(_ dateKey: String) {
+        let updatedRecord: DailyRecord
         if let recordIndex = records.firstIndex(where: { $0.date == dateKey }) {
-            records[recordIndex].excludedFromStats = true
+            var record = records[recordIndex]
+            record.excludedFromStats = true
+            updatedRecord = record
         } else {
-            records.append(DailyRecord(date: dateKey, excludedFromStats: true))
+            updatedRecord = DailyRecord(date: dateKey, excludedFromStats: true)
         }
 
+        guard persist(record: updatedRecord, operation: "保存请假日", presentError: true) else {
+            return
+        }
+        replaceRecordInMemory(updatedRecord)
         currentRecord = records.first { $0.date == recorder.dateKey(for: Date()) }
-
-        do {
-            try store.saveRecords(records)
-            renderStatusTitle()
-            renderMenu()
-        } catch {
-            NSLog("Daka records save failed: \(error)")
-        }
+        renderStatusTitle()
+        renderMenu()
     }
 
-    private func saveConfig(_ nextConfig: AppConfig) {
+    @discardableResult
+    private func saveConfig(_ nextConfig: AppConfig) -> Bool {
+        guard let store else {
+            presentStorageError(operation: "保存配置")
+            return false
+        }
+
         do {
             try store.saveConfig(nextConfig)
+            storageError = nil
             config = nextConfig
             startTimer()
+            requestWiFiPermissionIfNeeded()
             evaluateAndRender()
+            return true
         } catch {
-            NSLog("Daka config save failed: \(error)")
+            reportStorageError(error, operation: "保存配置", present: true)
+            return false
         }
     }
 
-    private func saveRecordsFromStats(_ updatedRecords: [DailyRecord]) {
-        records = updatedRecords
+    @discardableResult
+    private func saveRecordFromStats(_ updatedRecord: DailyRecord) -> Bool {
+        guard persist(record: updatedRecord, operation: "保存统计记录", presentError: true) else {
+            return false
+        }
+
+        replaceRecordInMemory(updatedRecord)
         currentRecord = records.first { $0.date == recorder.dateKey(for: Date()) }
+        renderStatusTitle()
+        renderMenu()
+        return true
+    }
+
+    private func replaceRecordInMemory(_ record: DailyRecord) {
+        records.removeAll { $0.date == record.date }
+        records.append(record)
+        records.sort { $0.date < $1.date }
+    }
+
+    @discardableResult
+    private func persist(record: DailyRecord, operation: String, presentError: Bool) -> Bool {
+        guard let store else {
+            if presentError {
+                presentStorageError(operation: operation)
+            }
+            return false
+        }
 
         do {
-            try store.saveRecords(records)
-            renderStatusTitle()
-            renderMenu()
+            try store.upsertRecord(record)
+            storageError = nil
+            return true
         } catch {
-            NSLog("Daka records save failed: \(error)")
+            reportStorageError(error, operation: operation, present: presentError)
+            return false
         }
+    }
+
+    private func reportStorageError(_ error: Error, operation: String, present: Bool) {
+        storageError = "\(operation)失败：\(error.localizedDescription)"
+        NSLog("Daka \(operation) failed: \(error)")
+        if statusItem != nil {
+            renderMenu()
+        }
+        if present {
+            presentStorageError(operation: operation)
+        }
+    }
+
+    private func presentStorageError(operation: String) {
+        let alert = NSAlert()
+        alert.alertStyle = .critical
+        alert.messageText = "\(operation)失败"
+        alert.informativeText = storageError ?? "数据存储当前不可用，请检查日志后重试。"
+        alert.addButton(withTitle: "知道了")
+        alert.runModal()
+    }
+
+    @objc private func showStorageError() {
+        presentStorageError(operation: "数据存储")
+    }
+
+    private var requiresWiFiPermission: Bool {
+        config.rule.conditions.contains {
+            if case .wifiConnected = $0 {
+                return true
+            }
+            return false
+        }
+    }
+
+    private func requestWiFiPermissionIfNeeded() {
+        locationPermissionRequester.requestIfNeeded(required: requiresWiFiPermission)
+    }
+
+    @objc private func openLocationSettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices") else {
+            return
+        }
+        NSWorkspace.shared.open(url)
     }
 
     private func showClockInReminderIfNeeded(at date: Date) {
@@ -539,4 +671,88 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 private enum RestDayReminderKind: String {
     case lastWorkdayBeforeRest
     case dayBeforeLastWorkday
+}
+
+private enum LocationPermissionStatus {
+    case authorized
+    case notDetermined
+    case denied
+    case disabled
+    case restricted
+
+    var title: String {
+        switch self {
+        case .authorized: return "已授权"
+        case .notDetermined: return "等待授权"
+        case .denied: return "未授权，点击设置"
+        case .disabled: return "定位服务已关闭，点击设置"
+        case .restricted: return "受系统限制"
+        }
+    }
+
+    var needsUserAction: Bool {
+        switch self {
+        case .denied, .disabled:
+            return true
+        case .authorized, .notDetermined, .restricted:
+            return false
+        }
+    }
+}
+
+private final class LocationPermissionRequester: NSObject, CLLocationManagerDelegate {
+    private let manager = CLLocationManager()
+    private let onAuthorizationChange: () -> Void
+
+    init(onAuthorizationChange: @escaping () -> Void) {
+        self.onAuthorizationChange = onAuthorizationChange
+        super.init()
+        manager.delegate = self
+    }
+
+    var status: LocationPermissionStatus {
+        guard CLLocationManager.locationServicesEnabled() else {
+            return .disabled
+        }
+
+        switch manager.authorizationStatus {
+        case .notDetermined: return .notDetermined
+        case .authorizedAlways, .authorizedWhenInUse: return .authorized
+        case .denied: return .denied
+        case .restricted: return .restricted
+        @unknown default: return .restricted
+        }
+    }
+
+    func requestIfNeeded(required: Bool) {
+        guard required else {
+            return
+        }
+
+        guard CLLocationManager.locationServicesEnabled() else {
+            NSLog("Daka location services are disabled; Wi-Fi SSID may be unavailable.")
+            return
+        }
+
+        switch manager.authorizationStatus {
+        case .notDetermined:
+            NSLog("Daka requesting location authorization for Wi-Fi SSID access.")
+            NSApp.activate(ignoringOtherApps: true)
+            manager.requestWhenInUseAuthorization()
+        case .authorizedAlways, .authorizedWhenInUse:
+            NSLog("Daka location authorization is granted.")
+            return
+        case .denied, .restricted:
+            NSLog("Daka location authorization is denied or restricted; Wi-Fi SSID may be unavailable.")
+            return
+        @unknown default:
+            NSLog("Daka location authorization has an unknown status; Wi-Fi SSID may be unavailable.")
+            return
+        }
+    }
+
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        NSLog("Daka location authorization changed: \(status.title).")
+        onAuthorizationChange()
+    }
 }

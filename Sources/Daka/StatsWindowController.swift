@@ -8,7 +8,7 @@ final class StatsWindowController: NSWindowController {
     private var monthlyAverageTargetSeconds: TimeInterval
     private var monthlySummaries: [MonthlyWorkdaySummary] = []
     private var holidayYears: [Int: ChinaHolidayYear] = [:]
-    private let onSave: ([DailyRecord]) -> Void
+    private let onSave: (DailyRecord) -> Bool
     private let tableView = NSTableView()
     private let monthlyTableView = NSTableView()
     private let tabControl = NSSegmentedControl(labels: ["表格", "趋势", "热力图", "月度"], trackingMode: .selectOne, target: nil, action: nil)
@@ -27,7 +27,7 @@ final class StatsWindowController: NSWindowController {
         records: [DailyRecord],
         targetDurationSeconds: TimeInterval,
         monthlyAverageTargetSeconds: TimeInterval,
-        onSave: @escaping ([DailyRecord]) -> Void
+        onSave: @escaping (DailyRecord) -> Bool
     ) {
         self.records = records.sorted { $0.date > $1.date }
         self.targetDurationSeconds = targetDurationSeconds
@@ -216,7 +216,7 @@ final class StatsWindowController: NSWindowController {
         addMonthlyColumn(id: "recorded", title: "有记录", width: 80)
         addMonthlyColumn(id: "total", title: "总时长", width: 100)
         addMonthlyColumn(id: "average", title: "日均", width: 100)
-        addMonthlyColumn(id: "status", title: "达标", width: 70)
+        addMonthlyColumn(id: "status", title: "达标", width: 90)
 
         let scrollView = NSScrollView()
         scrollView.documentView = monthlyTableView
@@ -250,7 +250,10 @@ final class StatsWindowController: NSWindowController {
         let included = workdayRecords.filter { !$0.excludedFromStats }
         let completed = included.filter { $0.firstMatchedAt != nil && $0.lastMatchedAt != nil }
         let excludedCount = workdayRecords.count - included.count
-        return "共 \(workdayRecords.count) 天工作日记录，\(excludedCount) 天不计入，\(completed.count) 天有有效时间，日目标 \(DakaFormatters.duration(targetDurationSeconds))，月均目标 \(DakaFormatters.duration(monthlyAverageTargetSeconds))"
+        let calendarNotice = monthlySummaries.contains { !$0.usesChinaCalendarData }
+            ? "；标有“估算”的月份暂未取得中国节假日日历，仅按周一至周五计算"
+            : ""
+        return "共 \(workdayRecords.count) 天工作日记录，\(excludedCount) 天不计入，\(completed.count) 天有有效时间，日目标 \(DakaFormatters.duration(targetDurationSeconds))，月均目标 \(DakaFormatters.duration(monthlyAverageTargetSeconds))\(calendarNotice)"
     }
 
     private func addColumn(id: String, title: String, width: CGFloat) {
@@ -280,9 +283,11 @@ final class StatsWindowController: NSWindowController {
             return
         }
 
+        guard onSave(updated) else {
+            return
+        }
         records[recordIndex] = updated
         refreshAfterRecordsChanged(selectedDate: updated.date)
-        onSave(records)
     }
 
     @objc private func addLeaveDay() {
@@ -290,14 +295,21 @@ final class StatsWindowController: NSWindowController {
             return
         }
 
+        let updated: DailyRecord
         if let recordIndex = records.firstIndex(where: { $0.date == dateKey }) {
-            records[recordIndex].excludedFromStats = true
+            var record = records[recordIndex]
+            record.excludedFromStats = true
+            updated = record
         } else {
-            records.append(DailyRecord(date: dateKey, excludedFromStats: true))
+            updated = DailyRecord(date: dateKey, excludedFromStats: true)
         }
 
+        guard onSave(updated) else {
+            return
+        }
+        records.removeAll { $0.date == dateKey }
+        records.append(updated)
         refreshAfterRecordsChanged(selectedDate: dateKey)
-        onSave(records)
     }
 
     @objc private func toggleSelectedRecordExcluded() {
@@ -308,9 +320,13 @@ final class StatsWindowController: NSWindowController {
             return
         }
 
-        records[recordIndex].excludedFromStats.toggle()
-        refreshAfterRecordsChanged(selectedDate: records[recordIndex].date)
-        onSave(records)
+        var updated = records[recordIndex]
+        updated.excludedFromStats.toggle()
+        guard onSave(updated) else {
+            return
+        }
+        records[recordIndex] = updated
+        refreshAfterRecordsChanged(selectedDate: updated.date)
     }
 
     @objc private func tabChanged() {
@@ -525,7 +541,8 @@ extension StatsWindowController: NSTableViewDataSource, NSTableViewDelegate {
         case "average":
             field.stringValue = DakaFormatters.duration(summary.averageSeconds)
         case "status":
-            field.stringValue = summary.isPassing ? "达标" : "未达标"
+            let result = summary.isPassing ? "达标" : "未达标"
+            field.stringValue = summary.usesChinaCalendarData ? result : "\(result)（估算）"
             field.textColor = summary.isPassing ? .systemGreen : .systemRed
         default:
             field.stringValue = ""
@@ -651,18 +668,27 @@ private enum RecordEditor {
             return nil
         }
 
-        var updated = record
-        updated.firstMatchedAt = firstPicker.dateValue
-        updated.lastMatchedAt = max(firstPicker.dateValue, lastPicker.dateValue)
+        guard let updated = DailyRecordTimeEditor.updating(
+            record,
+            firstTime: firstPicker.dateValue,
+            lastTime: lastPicker.dateValue
+        ) else {
+            let validationAlert = NSAlert()
+            validationAlert.alertStyle = .warning
+            validationAlert.messageText = "时间无效"
+            validationAlert.informativeText = "首次和最后时间必须属于 \(record.date)，且最后时间不能早于首次时间。"
+            validationAlert.runModal()
+            return nil
+        }
         return updated
     }
 
     private static func picker(date: Date) -> NSDatePicker {
         let picker = NSDatePicker()
         picker.datePickerStyle = .textFieldAndStepper
-        picker.datePickerElements = [.yearMonthDay, .hourMinute]
+        picker.datePickerElements = [.hourMinute]
         picker.dateValue = date
-        picker.widthAnchor.constraint(equalToConstant: 210).isActive = true
+        picker.widthAnchor.constraint(equalToConstant: 120).isActive = true
         return picker
     }
 

@@ -40,6 +40,13 @@ public final class ChinaWorkdayCalendar {
     private let calendar: Calendar
     private let cacheDirectory: URL
     private let decoder = JSONDecoder()
+    private static let downloadSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.requestCachePolicy = .useProtocolCachePolicy
+        configuration.timeoutIntervalForRequest = 8
+        configuration.timeoutIntervalForResource = 12
+        return URLSession(configuration: configuration)
+    }()
 
     public init(calendar: Calendar = .current, cacheDirectory: URL? = nil) {
         self.calendar = calendar
@@ -82,8 +89,9 @@ public final class ChinaWorkdayCalendar {
             for year in years.sorted() {
                 for baseURL in [Self.primaryDataBaseURL, Self.fallbackDataBaseURL] {
                     let url = baseURL.appendingPathComponent("\(year).json")
-                    guard let data = try? Data(contentsOf: url),
-                          let holidayYear = try? decoder.decode(ChinaHolidayYear.self, from: data) else {
+                    guard let data = Self.download(url),
+                          let holidayYear = try? decoder.decode(ChinaHolidayYear.self, from: data),
+                          holidayYear.year == year else {
                         continue
                     }
 
@@ -96,6 +104,32 @@ public final class ChinaWorkdayCalendar {
 
             completion(result)
         }
+    }
+
+    private static func download(_ url: URL) -> Data? {
+        let box = DownloadResultBox()
+        let finished = DispatchSemaphore(value: 0)
+        var request = URLRequest(url: url)
+        request.cachePolicy = .useProtocolCachePolicy
+        request.timeoutInterval = 8
+
+        let task = downloadSession.dataTask(with: request) { data, response, error in
+            defer { finished.signal() }
+            guard error == nil,
+                  let response = response as? HTTPURLResponse,
+                  (200...299).contains(response.statusCode),
+                  let data else {
+                return
+            }
+            box.set(data)
+        }
+        task.resume()
+
+        guard finished.wait(timeout: .now() + 12) == .success else {
+            task.cancel()
+            return nil
+        }
+        return box.value
     }
 
     public func isWorkday(dateKey: String, holidayYear: ChinaHolidayYear?) -> Bool {
@@ -135,6 +169,23 @@ public final class ChinaWorkdayCalendar {
 
     private func cacheURL(for year: Int) -> URL {
         cacheDirectory.appendingPathComponent("CN-\(year).json")
+    }
+}
+
+private final class DownloadResultBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data: Data?
+
+    var value: Data? {
+        lock.lock()
+        defer { lock.unlock() }
+        return data
+    }
+
+    func set(_ value: Data) {
+        lock.lock()
+        data = value
+        lock.unlock()
     }
 }
 

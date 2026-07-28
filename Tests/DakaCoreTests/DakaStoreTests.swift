@@ -31,6 +31,24 @@ struct DakaStoreTests {
         #expect(FileManager.default.fileExists(atPath: paths.databaseURL.path))
     }
 
+    @Test func upsertingOneRecordPreservesOtherRecords() throws {
+        let directory = try temporaryDirectory()
+        let store = try DakaStore(paths: DakaPaths(baseDirectory: directory))
+        let first = DailyRecord(
+            date: "2026-05-20",
+            firstMatchedAt: Date(timeIntervalSince1970: 1_779_250_400),
+            lastMatchedAt: Date(timeIntervalSince1970: 1_779_282_800)
+        )
+        let second = DailyRecord(date: "2026-05-21", excludedFromStats: true)
+        try store.saveRecords([first, second])
+
+        var updated = first
+        updated.lastMatchedAt = first.lastMatchedAt?.addingTimeInterval(3_600)
+        try store.upsertRecord(updated)
+
+        #expect(try store.loadRecords() == [updated, second])
+    }
+
     @Test func oldRecordJSONDefaultsToIncludedInStats() throws {
         let json = """
         {
