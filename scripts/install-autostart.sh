@@ -72,9 +72,26 @@ PLIST
 
 if launchctl print "gui/$UID/$LABEL" >/dev/null 2>&1; then
     launchctl bootout "gui/$UID/$LABEL" >/dev/null 2>&1 || true
+    for _ in 1 2 3 4 5; do
+        if ! launchctl print "gui/$UID/$LABEL" >/dev/null 2>&1; then
+            break
+        fi
+        sleep 1
+    done
 fi
 
-launchctl bootstrap "gui/$UID" "$PLIST"
+BOOTSTRAPPED=false
+for _ in 1 2 3; do
+    if launchctl bootstrap "gui/$UID" "$PLIST"; then
+        BOOTSTRAPPED=true
+        break
+    fi
+    sleep 1
+done
+if [[ "$BOOTSTRAPPED" != true ]]; then
+    print -u2 "Failed to register $LABEL after 3 attempts."
+    exit 1
+fi
 launchctl enable "gui/$UID/$LABEL"
 launchctl kickstart -k "gui/$UID/$LABEL"
 
