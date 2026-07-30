@@ -26,7 +26,6 @@ if
         ).expandingTildeInPath
     )
     do {
-        let store = try DakaStore(paths: DakaPaths())
         let section: DakaDashboardSection
         if CommandLine.arguments.contains("--preview-records") {
             section = .records
@@ -49,9 +48,20 @@ if
         } else {
             settingsSection = .goals
         }
+        let records: [DailyRecord]
+        let config: AppConfig
+        if CommandLine.arguments.contains("--demo-preview") {
+            let fixtures = DakaPreviewFixtures.make()
+            records = fixtures.records
+            config = fixtures.config
+        } else {
+            let store = try DakaStore(paths: DakaPaths())
+            records = try store.loadRecords()
+            config = try store.loadConfig()
+        }
         try renderDakaDashboardPreview(
-            records: store.loadRecords(),
-            config: store.loadConfig(),
+            records: records,
+            config: config,
             section: section,
             settingsSection: settingsSection,
             outputURL: outputURL

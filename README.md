@@ -6,6 +6,20 @@ Daka 是一个原生 macOS 菜单栏打卡时长记录工具。它根据可配�
 
 当前版本：`0.3.0`
 
+## 界面预览
+
+### 今日概览
+
+![Daka 今日概览](docs/images/daka-today.png)
+
+### 趋势与热力图
+
+![Daka 趋势与热力图](docs/images/daka-trends.png)
+
+### 匹配条件设置
+
+![Daka 匹配条件设置](docs/images/daka-settings.png)
+
 ## 系统要求
 
 - macOS 12 Monterey 或更高版本
@@ -446,13 +460,18 @@ brew style Formula/daka.rb
 
 ```bash
 .build/release/daka \
-  --render-preview /tmp/daka-preview.png
+  --render-preview /tmp/daka-preview.png \
+  --demo-preview
 
 .build/release/daka \
   --render-preview /tmp/daka-settings.png \
+  --demo-preview \
   --preview-settings \
-  --preview-runtime
+  --preview-conditions
 ```
+
+`--demo-preview` 使用内置演示记录和虚拟 Wi-Fi 名称，不会读取或暴露本机
+的真实配置与打卡数据。
 
 ## 许可证
 
