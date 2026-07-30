@@ -86,7 +86,7 @@ final class StatsWindowController: NSWindowController {
             root.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             root.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             root.topAnchor.constraint(equalTo: contentView.topAnchor),
-            root.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
+            root.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
         ])
 
         let overviewPanel = RoundedPanelView()
@@ -250,10 +250,12 @@ final class StatsWindowController: NSWindowController {
         let included = workdayRecords.filter { !$0.excludedFromStats }
         let completed = included.filter { $0.firstMatchedAt != nil && $0.lastMatchedAt != nil }
         let excludedCount = workdayRecords.count - included.count
-        let calendarNotice = monthlySummaries.contains { !$0.usesChinaCalendarData }
+        let calendarNotice =
+            monthlySummaries.contains { !$0.usesChinaCalendarData }
             ? "；标有“估算”的月份暂未取得中国节假日日历，仅按周一至周五计算"
             : ""
-        return "共 \(workdayRecords.count) 天工作日记录，\(excludedCount) 天不计入，\(completed.count) 天有有效时间，日目标 \(DakaFormatters.duration(targetDurationSeconds))，月均目标 \(DakaFormatters.duration(monthlyAverageTargetSeconds))\(calendarNotice)"
+        return
+            "共 \(workdayRecords.count) 天工作日记录，\(excludedCount) 天不计入，\(completed.count) 天有有效时间，日目标 \(DakaFormatters.duration(targetDurationSeconds))，月均目标 \(DakaFormatters.duration(monthlyAverageTargetSeconds))\(calendarNotice)"
     }
 
     private func addColumn(id: String, title: String, width: CGFloat) {
@@ -274,7 +276,8 @@ final class StatsWindowController: NSWindowController {
         let row = tableView.selectedRow
         let visibleRecords = recordsForVisibleWorkdays()
         guard row >= 0, row < visibleRecords.count,
-              let recordIndex = records.firstIndex(where: { $0.date == visibleRecords[row].date }) else {
+            let recordIndex = records.firstIndex(where: { $0.date == visibleRecords[row].date })
+        else {
             return
         }
 
@@ -316,7 +319,8 @@ final class StatsWindowController: NSWindowController {
         let row = tableView.selectedRow
         let visibleRecords = recordsForVisibleWorkdays()
         guard row >= 0, row < visibleRecords.count,
-              let recordIndex = records.firstIndex(where: { $0.date == visibleRecords[row].date }) else {
+            let recordIndex = records.firstIndex(where: { $0.date == visibleRecords[row].date })
+        else {
             return
         }
 
@@ -459,7 +463,7 @@ final class StatsWindowController: NSWindowController {
             child.leadingAnchor.constraint(equalTo: parent.leadingAnchor, constant: insets.left),
             child.trailingAnchor.constraint(equalTo: parent.trailingAnchor, constant: -insets.right),
             child.topAnchor.constraint(equalTo: parent.topAnchor, constant: insets.top),
-            child.bottomAnchor.constraint(equalTo: parent.bottomAnchor, constant: -insets.bottom)
+            child.bottomAnchor.constraint(equalTo: parent.bottomAnchor, constant: -insets.bottom),
         ])
     }
 }
@@ -668,11 +672,13 @@ enum RecordEditor {
             return nil
         }
 
-        guard let updated = DailyRecordTimeEditor.updating(
-            record,
-            firstTime: firstPicker.dateValue,
-            lastTime: lastPicker.dateValue
-        ) else {
+        guard
+            let updated = DailyRecordTimeEditor.updating(
+                record,
+                firstTime: firstPicker.dateValue,
+                lastTime: lastPicker.dateValue
+            )
+        else {
             let validationAlert = NSAlert()
             validationAlert.alertStyle = .warning
             validationAlert.messageText = "时间无效"

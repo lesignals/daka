@@ -25,7 +25,8 @@ final class TrendChartView: NSView {
 
         drawAxes(in: rect)
 
-        let sorted = records
+        let sorted =
+            records
             .filter { !$0.excludedFromStats && $0.spanSeconds != nil }
             .sorted { $0.date < $1.date }
             .suffix(45)
@@ -104,7 +105,7 @@ final class TrendChartView: NSView {
     private func drawText(_ text: String, at point: NSPoint, color: NSColor) {
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 11),
-            .foregroundColor: color
+            .foregroundColor: color,
         ]
         text.draw(at: point, withAttributes: attributes)
     }
@@ -112,7 +113,7 @@ final class TrendChartView: NSView {
     private func drawEmptyMessage(_ text: String) {
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 13, weight: .medium),
-            .foregroundColor: NSColor.secondaryLabelColor
+            .foregroundColor: NSColor.secondaryLabelColor,
         ]
         let size = text.size(withAttributes: attributes)
         text.draw(
@@ -141,7 +142,8 @@ final class HeatmapView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
 
-        let sorted = records
+        let sorted =
+            records
             .filter { !$0.excludedFromStats }
             .sorted { $0.date < $1.date }
         guard !sorted.isEmpty else {
@@ -223,7 +225,7 @@ final class HeatmapView: NSView {
             ("低", NSColor.systemRed.withAlphaComponent(0.75)),
             ("中", NSColor.systemOrange.withAlphaComponent(0.8)),
             ("高", NSColor.systemBlue.withAlphaComponent(0.82)),
-            ("达标", NSColor.systemGreen.withAlphaComponent(0.86))
+            ("达标", NSColor.systemGreen.withAlphaComponent(0.86)),
         ]
 
         var x = bounds.maxX - 160
@@ -239,7 +241,7 @@ final class HeatmapView: NSView {
     private func drawText(_ text: String, at point: NSPoint, color: NSColor) {
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 11),
-            .foregroundColor: color
+            .foregroundColor: color,
         ]
         text.draw(at: point, withAttributes: attributes)
     }
@@ -247,7 +249,7 @@ final class HeatmapView: NSView {
     private func drawEmptyMessage(_ text: String) {
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 13, weight: .medium),
-            .foregroundColor: NSColor.secondaryLabelColor
+            .foregroundColor: NSColor.secondaryLabelColor,
         ]
         let size = text.size(withAttributes: attributes)
         text.draw(

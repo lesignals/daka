@@ -79,7 +79,7 @@ final class ConfigWindowController: NSWindowController {
             root.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             root.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             root.topAnchor.constraint(equalTo: contentView.topAnchor),
-            root.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
+            root.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
         ])
 
         let tabView = NSTabView()
@@ -314,7 +314,8 @@ final class ConfigWindowController: NSWindowController {
 
     @objc private func typeChanged() {
         guard tableView.selectedRow >= 0, tableView.selectedRow < drafts.count,
-              let kind = ConditionDraft.Kind(title: typePopup.titleOfSelectedItem ?? "") else {
+            let kind = ConditionDraft.Kind(title: typePopup.titleOfSelectedItem ?? "")
+        else {
             return
         }
 
@@ -459,17 +460,21 @@ final class ConfigWindowController: NSWindowController {
             showAlert(message: "目标时长必须是 0.25 到 24 之间的小时数。")
             return
         }
-        guard let monthlyAverageTargetHours = DakaInputValidator.positiveNumber(
-            monthlyAverageTargetHoursField.stringValue,
-            range: 0.25...24
-        ) else {
+        guard
+            let monthlyAverageTargetHours = DakaInputValidator.positiveNumber(
+                monthlyAverageTargetHoursField.stringValue,
+                range: 0.25...24
+            )
+        else {
             showAlert(message: "月均目标必须是 0.25 到 24 之间的小时数。")
             return
         }
-        guard let weeklyTargetHours = DakaInputValidator.positiveNumber(
-            weeklyTargetHoursField.stringValue,
-            range: 0.25...168
-        ) else {
+        guard
+            let weeklyTargetHours = DakaInputValidator.positiveNumber(
+                weeklyTargetHoursField.stringValue,
+                range: 0.25...168
+            )
+        else {
             showAlert(message: "周目标必须是 0.25 到 168 之间的小时数。")
             return
         }
@@ -649,16 +654,16 @@ private struct ConditionDraft {
         switch condition {
         case .screenUnlocked:
             self.kind = .screenUnlocked
-        case let .wifiConnected(ssid):
+        case .wifiConnected(let ssid):
             self.kind = .wifiConnected
             self.primary = ssid
         case .powerConnected:
             self.kind = .powerConnected
-        case let .networkReachable(host, port):
+        case .networkReachable(let host, let port):
             self.kind = .networkReachable
             self.primary = host
             self.secondary = String(port)
-        case let .timeRange(start, end):
+        case .timeRange(let start, let end):
             self.kind = .timeRange
             self.primary = start
             self.secondary = end
@@ -680,7 +685,8 @@ private struct ConditionDraft {
             return .networkReachable(host: primary, port: port)
         case .timeRange:
             guard let start = DakaInputValidator.normalizedTime(primary),
-                  let end = DakaInputValidator.normalizedTime(secondary) else {
+                let end = DakaInputValidator.normalizedTime(secondary)
+            else {
                 return nil
             }
             return .timeRange(start: start, end: end)

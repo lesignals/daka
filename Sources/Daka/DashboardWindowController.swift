@@ -190,7 +190,8 @@ final class DakaDashboardViewModel: ObservableObject {
             return
         }
 
-        var updated = records.first { $0.date == dateKey }
+        var updated =
+            records.first { $0.date == dateKey }
             ?? DailyRecord(date: dateKey)
         updated.excludedFromStats = true
         guard onSaveRecord(updated) else {
@@ -356,7 +357,7 @@ final class DashboardWindowController: NSWindowController {
             .closable,
             .miniaturizable,
             .resizable,
-            .fullSizeContentView
+            .fullSizeContentView,
         ]
         window.setContentSize(NSSize(width: 980, height: 680))
         window.minSize = NSSize(width: 840, height: 580)
@@ -431,17 +432,19 @@ func renderDakaDashboardPreview(
         viewModel: viewModel,
         settingsSection: settingsSection
     )
-        .frame(width: 980, height: 680)
-        .environment(\.colorScheme, .light)
+    .frame(width: 980, height: 680)
+    .environment(\.colorScheme, .light)
     let hostingView = NSHostingView(rootView: root)
     hostingView.frame = NSRect(x: 0, y: 0, width: 980, height: 680)
     hostingView.appearance = NSAppearance(named: .aqua)
     hostingView.layoutSubtreeIfNeeded()
     hostingView.displayIfNeeded()
 
-    guard let bitmap = hostingView.bitmapImageRepForCachingDisplay(
-        in: hostingView.bounds
-    ) else {
+    guard
+        let bitmap = hostingView.bitmapImageRepForCachingDisplay(
+            in: hostingView.bounds
+        )
+    else {
         throw NSError(
             domain: "local.daka.menu.preview",
             code: 1,
@@ -712,7 +715,7 @@ private struct TodayDashboardView: View {
                     LinearGradient(
                         colors: [
                             DakaTheme.blue.opacity(0.12),
-                            DakaTheme.green.opacity(0.07)
+                            DakaTheme.green.opacity(0.07),
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -1227,7 +1230,8 @@ private struct DakaTrendChart: View {
             )
 
             let points = values.enumerated().map { index, value -> CGPoint in
-                let x = values.count == 1
+                let x =
+                    values.count == 1
                     ? rect.midX
                     : rect.minX
                         + CGFloat(index) / CGFloat(values.count - 1) * rect.width

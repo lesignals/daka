@@ -5,13 +5,14 @@ public enum DakaInputValidator {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         let parts = trimmed.split(separator: ":", omittingEmptySubsequences: false)
         guard parts.count == 2,
-              (1...2).contains(parts[0].count),
-              parts[1].count == 2,
-              parts.allSatisfy({ $0.allSatisfy(\.isNumber) }),
-              let hour = Int(parts[0]),
-              let minute = Int(parts[1]),
-              (0...23).contains(hour),
-              (0...59).contains(minute) else {
+            (1...2).contains(parts[0].count),
+            parts[1].count == 2,
+            parts.allSatisfy({ $0.allSatisfy(\.isNumber) }),
+            let hour = Int(parts[0]),
+            let minute = Int(parts[1]),
+            (0...23).contains(hour),
+            (0...59).contains(minute)
+        else {
             return nil
         }
 
@@ -55,9 +56,10 @@ public enum DailyRecordTimeEditor {
         calendar: Calendar = .current
     ) -> DailyRecord? {
         guard let recordDate = ChinaWorkdayCalendar.dateFormatter.date(from: record.date),
-              let first = combine(date: recordDate, time: firstTime, calendar: calendar),
-              let last = combine(date: recordDate, time: lastTime, calendar: calendar),
-              last >= first else {
+            let first = combine(date: recordDate, time: firstTime, calendar: calendar),
+            let last = combine(date: recordDate, time: lastTime, calendar: calendar),
+            last >= first
+        else {
             return nil
         }
 

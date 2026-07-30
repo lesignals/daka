@@ -59,16 +59,16 @@ public enum TimerCondition: Codable, Equatable, Hashable, Sendable {
         switch self {
         case .screenUnlocked:
             try container.encode(Kind.screenUnlocked, forKey: .type)
-        case let .wifiConnected(ssid):
+        case .wifiConnected(let ssid):
             try container.encode(Kind.wifiConnected, forKey: .type)
             try container.encode(ssid, forKey: .ssid)
         case .powerConnected:
             try container.encode(Kind.powerConnected, forKey: .type)
-        case let .networkReachable(host, port):
+        case .networkReachable(let host, let port):
             try container.encode(Kind.networkReachable, forKey: .type)
             try container.encode(host, forKey: .host)
             try container.encode(port, forKey: .port)
-        case let .timeRange(start, end):
+        case .timeRange(let start, let end):
             try container.encode(Kind.timeRange, forKey: .type)
             try container.encode(start, forKey: .start)
             try container.encode(end, forKey: .end)

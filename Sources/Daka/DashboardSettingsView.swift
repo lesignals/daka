@@ -424,9 +424,10 @@ private final class DakaSettingsDraft: ObservableObject {
         let usedSingletons = Set(
             conditions.filter(\.kind.isSingleton).map(\.kind)
         )
-        let kind = DakaConditionDraft.Kind.allCases.first {
-            !$0.isSingleton || !usedSingletons.contains($0)
-        } ?? .wifiConnected
+        let kind =
+            DakaConditionDraft.Kind.allCases.first {
+                !$0.isSingleton || !usedSingletons.contains($0)
+            } ?? .wifiConnected
         conditions.append(DakaConditionDraft(kind: kind))
         clearMessage()
     }
@@ -654,16 +655,16 @@ private struct DakaConditionDraft {
         switch condition {
         case .screenUnlocked:
             kind = .screenUnlocked
-        case let .wifiConnected(ssid):
+        case .wifiConnected(let ssid):
             kind = .wifiConnected
             primary = ssid
         case .powerConnected:
             kind = .powerConnected
-        case let .networkReachable(host, port):
+        case .networkReachable(let host, let port):
             kind = .networkReachable
             primary = host
             secondary = String(port)
-        case let .timeRange(start, end):
+        case .timeRange(let start, let end):
             kind = .timeRange
             primary = start
             secondary = end
@@ -706,7 +707,7 @@ private enum DakaSettingsValidationError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case let .message(message):
+        case .message(let message):
             return message
         }
     }

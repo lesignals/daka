@@ -89,7 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ("com.apple.screensaver.didstart", true),
             ("com.apple.screensaver.didstop", false),
             ("com.apple.screenIsLocked", nil),
-            ("com.apple.screenIsUnlocked", nil)
+            ("com.apple.screenIsUnlocked", nil),
         ]
 
         for (name, screenSaverState) in notifications {
@@ -118,7 +118,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            let section = (notification.object as? String)
+            let section =
+                (notification.object as? String)
                 .flatMap(DakaDashboardSection.init(rawValue:))
                 ?? .today
             self?.showDashboard(section: section)
@@ -201,7 +202,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             string: text,
             attributes: [
                 .foregroundColor: NSColor.labelColor,
-                .font: NSFont.menuBarFont(ofSize: 0)
+                .font: NSFont.menuBarFont(ofSize: 0),
             ]
         )
         statusItem.button?.image = ProgressBarImageRenderer.image(value: progressValue, color: progressColor)
@@ -637,7 +638,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let nextWeek = calendar.date(byAdding: .day, value: 7, to: date) ?? date
         return [
             calendar.component(.year, from: date),
-            calendar.component(.year, from: nextWeek)
+            calendar.component(.year, from: nextWeek),
         ]
     }
 
@@ -671,8 +672,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         guard let reminderKind,
-              isAtOrAfterReminderTime(reminderTime, at: date),
-              !hasShownRestDayReminder(kind: reminderKind, dateKey: todayKey) else {
+            isAtOrAfterReminderTime(reminderTime, at: date),
+            !hasShownRestDayReminder(kind: reminderKind, dateKey: todayKey)
+        else {
             return
         }
 
@@ -708,13 +710,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let alert = NSAlert()
         alert.messageText = "休息日前提醒"
         alert.informativeText = """
-        \(message)
+            \(message)
 
-        本周已记录：\(DakaFormatters.duration(status.totalSeconds))
-        本周平均：\(DakaFormatters.duration(status.averageSeconds)) / 工作日
-        周目标：\(DakaFormatters.duration(status.targetSeconds))
-        还差：\(DakaFormatters.duration(remainingSeconds))
-        """
+            本周已记录：\(DakaFormatters.duration(status.totalSeconds))
+            本周平均：\(DakaFormatters.duration(status.averageSeconds)) / 工作日
+            周目标：\(DakaFormatters.duration(status.targetSeconds))
+            还差：\(DakaFormatters.duration(remainingSeconds))
+            """
         alert.alertStyle = .warning
         alert.addButton(withTitle: "知道了")
         alert.runModal()
@@ -735,8 +737,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func isAtOrAfterReminderTime(_ reminderTime: String, at date: Date) -> Bool {
         let parts = reminderTime.split(separator: ":")
         guard parts.count == 2,
-              let hour = Int(parts[0]),
-              let minute = Int(parts[1]) else {
+            let hour = Int(parts[0]),
+            let minute = Int(parts[1])
+        else {
             return true
         }
 
