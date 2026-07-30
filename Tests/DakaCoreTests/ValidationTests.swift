@@ -29,6 +29,72 @@ struct ValidationTests {
         #expect(!WiFiSSIDMatcher.matches(current: nil, expected: "Office WiFi"))
     }
 
+    @Test func bluetoothSignalRequiresRecentRSSIAtOrAboveThreshold() {
+        #expect(BluetoothSignalMatcher.matches(currentRSSI: -60, minimumRSSI: -65))
+        #expect(BluetoothSignalMatcher.matches(currentRSSI: -65, minimumRSSI: -65))
+        #expect(!BluetoothSignalMatcher.matches(currentRSSI: -66, minimumRSSI: -65))
+        #expect(!BluetoothSignalMatcher.matches(currentRSSI: nil, minimumRSSI: -65))
+    }
+
+    @Test func bluetoothSignalWindowUsesFiveSampleMedian() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var window = BluetoothSignalSampleWindow()
+
+        for (index, rssi) in [-80, -50, -70, -60, -40].enumerated() {
+            window.record(
+                rssi,
+                at: start.addingTimeInterval(TimeInterval(index))
+            )
+        }
+
+        #expect(
+            window.smoothedRSSI(at: start.addingTimeInterval(5)) == -60
+        )
+    }
+
+    @Test func bluetoothSignalWindowExpiresAndResetsAfterLongAbsence() {
+        let start = Date(timeIntervalSince1970: 2_000)
+        var window = BluetoothSignalSampleWindow(sampleLifetime: 30)
+
+        for offset in 0..<5 {
+            window.record(
+                -50,
+                at: start.addingTimeInterval(TimeInterval(offset))
+            )
+        }
+
+        #expect(
+            window.smoothedRSSI(at: start.addingTimeInterval(35)) == nil
+        )
+
+        window.record(-90, at: start.addingTimeInterval(40))
+        #expect(
+            window.smoothedRSSI(at: start.addingTimeInterval(40)) == -90
+        )
+    }
+
+    @Test func bluetoothAvailabilityProvidesDistinctRecoveryActions() {
+        #expect(
+            BluetoothAvailability.poweredOff.recoveryAction
+                == .openBluetoothSettings
+        )
+        #expect(
+            BluetoothAvailability.unauthorized.recoveryAction
+                == .openBluetoothPrivacySettings
+        )
+        #expect(BluetoothAvailability.unsupported.recoveryAction == nil)
+        #expect(BluetoothAvailability.ready.message == nil)
+    }
+
+    @Test func bluetoothRSSIThresholdAcceptsPracticalRangeOnly() {
+        #expect(DakaInputValidator.bluetoothRSSI("-65") == -65)
+        #expect(DakaInputValidator.bluetoothRSSI("-100") == -100)
+        #expect(DakaInputValidator.bluetoothRSSI("-20") == -20)
+        #expect(DakaInputValidator.bluetoothRSSI("-101") == nil)
+        #expect(DakaInputValidator.bluetoothRSSI("-19") == nil)
+        #expect(DakaInputValidator.bluetoothRSSI("strong") == nil)
+    }
+
     @Test func editedTimesStayOnRecordDate() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try #require(TimeZone(identifier: "Asia/Shanghai"))

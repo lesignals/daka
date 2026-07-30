@@ -37,6 +37,14 @@ public enum DakaInputValidator {
         }
         return TimeInterval(seconds)
     }
+
+    public static func bluetoothRSSI(_ value: String) -> Int? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let rssi = Int(trimmed), (-100 ... -20).contains(rssi) else {
+            return nil
+        }
+        return rssi
+    }
 }
 
 public enum WiFiSSIDMatcher {
@@ -45,6 +53,15 @@ public enum WiFiSSIDMatcher {
             return false
         }
         return current == expected
+    }
+}
+
+public enum BluetoothSignalMatcher {
+    public static func matches(currentRSSI: Int?, minimumRSSI: Int) -> Bool {
+        guard let currentRSSI else {
+            return false
+        }
+        return currentRSSI >= minimumRSSI
     }
 }
 

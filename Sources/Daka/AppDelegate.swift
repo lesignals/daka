@@ -33,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         setupStore()
+        configureBluetoothMonitoring()
         setupChinaCalendar()
         setupStatusItem()
         setupNotifications()
@@ -142,8 +143,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        evaluationInProgress = true
         let now = Date()
+        guard !statsPaused else {
+            lastMatched = false
+            currentRecord = recorder.update(
+                record: currentRecord,
+                matched: false,
+                at: now
+            )
+            showRestDayReminderIfNeeded(at: now)
+            renderStatusTitle()
+            renderMenu()
+            updateDashboardIfVisible()
+            return
+        }
+
+        evaluationInProgress = true
         let rule = config.rule
         let checker = checker
 
@@ -347,6 +362,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func toggleStatsPaused() {
         statsPaused.toggle()
         UserDefaults.standard.set(statsPaused, forKey: "Daka.statsPaused")
+        configureBluetoothMonitoring()
         evaluateAndRender()
     }
 
@@ -458,6 +474,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             storageError = nil
             config = nextConfig
             startTimer()
+            configureBluetoothMonitoring()
             requestWiFiPermissionIfNeeded()
             evaluateAndRender()
             return true
@@ -571,6 +588,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func requestWiFiPermissionIfNeeded() {
         locationPermissionRequester.requestIfNeeded(required: requiresWiFiPermission)
+    }
+
+    private func configureBluetoothMonitoring() {
+        let required = config.rule.conditions.contains {
+            if case .bluetoothSignal = $0 {
+                return true
+            }
+            return false
+        }
+        BluetoothDeviceScanner.shared.setMonitoringEnabled(
+            required && !statsPaused
+        )
     }
 
     @objc private func openLocationSettings() {

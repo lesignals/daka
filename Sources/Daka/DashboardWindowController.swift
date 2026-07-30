@@ -469,7 +469,7 @@ private struct DakaDashboardView: View {
     var body: some View {
         HStack(spacing: 0) {
             sidebar
-                .frame(width: 210)
+                .frame(width: 216)
                 .frame(maxHeight: .infinity)
             Divider()
             content
@@ -483,12 +483,18 @@ private struct DakaDashboardView: View {
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             DakaBrand()
-                .padding(.horizontal, 14)
-                .padding(.top, 14)
-                .padding(.bottom, 22)
+                .padding(.horizontal, 16)
+                .padding(.top, 18)
+                .padding(.bottom, 24)
                 .fixedSize(horizontal: false, vertical: true)
 
-            VStack(spacing: 5) {
+            Text("概览")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.secondary.opacity(0.8))
+                .padding(.horizontal, 22)
+                .padding(.bottom, 6)
+
+            VStack(spacing: 3) {
                 DakaSidebarButton(
                     title: "今日",
                     icon: "sun.max.fill",
@@ -514,21 +520,21 @@ private struct DakaDashboardView: View {
                     selection: $viewModel.selection
                 )
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 12)
 
             Spacer()
 
             Divider()
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 10)
             DakaSidebarButton(
                 title: "设置",
                 icon: "gearshape.fill",
                 section: .settings,
                 selection: $viewModel.selection
             )
-            .padding(.horizontal, 10)
-            .padding(.bottom, 12)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 14)
         }
         .background(Color(nsColor: .windowBackgroundColor))
     }
@@ -590,6 +596,8 @@ private struct DakaSidebarButton: View {
     let section: DakaDashboardSection
     @Binding var selection: DakaDashboardSection
 
+    private var isSelected: Bool { selection == section }
+
     var body: some View {
         Button {
             selection = section
@@ -598,27 +606,26 @@ private struct DakaSidebarButton: View {
                 Image(systemName: icon)
                     .font(.system(size: 13, weight: .semibold))
                     .frame(width: 18)
-                    .foregroundColor(selection == section ? DakaTheme.blue : .secondary)
+                    .foregroundColor(isSelected ? DakaTheme.blue : .secondary)
                 Text(title)
-                    .font(
-                        .system(
-                            size: 13,
-                            weight: selection == section ? .semibold : .regular
-                        )
-                    )
-                    .foregroundColor(.primary)
+                    .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                    .foregroundColor(isSelected ? DakaTheme.blue : .primary)
                 Spacer()
             }
-            .padding(.horizontal, 11)
+            .padding(.horizontal, 10)
             .frame(height: 34)
             .contentShape(Rectangle())
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(
-                        selection == section
-                            ? DakaTheme.blue.opacity(0.11)
-                            : Color.clear
-                    )
+                ZStack(alignment: .leading) {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(DakaTheme.blue.opacity(0.11))
+                        RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                            .fill(DakaTheme.blue)
+                            .frame(width: 3)
+                            .padding(.vertical, 7)
+                    }
+                }
             )
         }
         .buttonStyle(.plain)
@@ -643,15 +650,10 @@ private struct TodayDashboardView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("今天，保持节奏")
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
-                Text(Date(), style: .date)
-                    .font(.system(size: 13))
-                    .foregroundColor(.secondary)
-            }
-            Spacer()
+        DakaPageHeader(
+            "今天，保持节奏",
+            subtitle: Date().formatted(date: .long, time: .omitted)
+        ) {
             HStack(spacing: 10) {
                 if viewModel.canConfirmClockIn {
                     Button {
@@ -671,58 +673,43 @@ private struct TodayDashboardView: View {
 
     private var todayHero: some View {
         HStack(spacing: 24) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 7) {
                 Text("今日跨度")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.white.opacity(0.75))
                 Text(DakaFormatters.duration(viewModel.todayRecord.spanSeconds))
-                    .font(.system(size: 42, weight: .bold, design: .rounded))
+                    .font(.system(size: 44, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
                 Text(viewModel.remainingText)
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(
-                        viewModel.todayProgress >= 1
-                            ? DakaTheme.green
-                            : .secondary
-                    )
+                    .foregroundColor(.white.opacity(0.85))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(Color.white.opacity(0.16))
+                    .clipShape(Capsule())
             }
 
             Spacer()
 
-            VStack(alignment: .trailing, spacing: 9) {
-                Text(DakaFormatters.percent(viewModel.todayProgress))
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
-                    .foregroundColor(
-                        viewModel.todayProgress >= 1
-                            ? DakaTheme.green
-                            : DakaTheme.blue
-                    )
-                Text("目标 \(DakaFormatters.duration(viewModel.targetDurationSeconds))")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                DakaLinearProgress(
-                    value: viewModel.todayProgress,
-                    tint: viewModel.todayProgress >= 1
-                        ? DakaTheme.green
-                        : DakaTheme.blue
-                )
-                .frame(width: 230)
+            ZStack {
+                DakaProgressRing(value: viewModel.todayProgress)
+                    .frame(width: 118, height: 118)
+                VStack(spacing: 2) {
+                    Text(DakaFormatters.percent(viewModel.todayProgress))
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                    Text("目标 \(DakaFormatters.duration(viewModel.targetDurationSeconds))")
+                        .font(.system(size: 10))
+                        .foregroundColor(.white.opacity(0.75))
+                }
             }
         }
-        .padding(22)
+        .padding(24)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            DakaTheme.blue.opacity(0.12),
-                            DakaTheme.green.opacity(0.07),
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                .fill(DakaTheme.heroGradient)
+                .shadow(color: DakaTheme.blue.opacity(0.30), radius: 14, y: 6)
         )
-        .overlay(DakaCardBorder(radius: 18))
     }
 
     private var timeCards: some View {
@@ -739,7 +726,7 @@ private struct TodayDashboardView: View {
                 value: DakaFormatters.shortTime(viewModel.todayRecord.lastMatchedAt),
                 detail: "最近一次更新",
                 icon: "sunset.fill",
-                tint: .orange
+                tint: DakaTheme.orange
             )
             DakaMetricCard(
                 title: "日目标",
@@ -766,12 +753,23 @@ private struct TodayDashboardView: View {
                     .foregroundColor(.secondary)
                 }
                 Spacer()
-                Text(DakaFormatters.duration(month.averageSeconds))
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                DakaStatusPill(
-                    text: month.isPassing ? "达标" : "未达标",
-                    tint: month.isPassing ? DakaTheme.green : .orange
-                )
+                VStack(alignment: .trailing, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Text(DakaFormatters.duration(month.averageSeconds))
+                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                        DakaStatusPill(
+                            text: month.isPassing ? "达标" : "未达标",
+                            tint: month.isPassing ? DakaTheme.green : DakaTheme.orange
+                        )
+                    }
+                    DakaLinearProgress(
+                        value: viewModel.monthlyAverageTargetSeconds > 0
+                            ? month.averageSeconds / viewModel.monthlyAverageTargetSeconds
+                            : 0,
+                        tint: month.isPassing ? DakaTheme.green : DakaTheme.blue
+                    )
+                    .frame(width: 170)
+                }
             }
             .padding(16)
             .background(DakaCardBackground())
@@ -792,13 +790,22 @@ private struct TodayDashboardView: View {
             }
 
             VStack(spacing: 0) {
-                ForEach(
-                    Array(viewModel.visibleWorkdayRecords.prefix(5).enumerated()),
-                    id: \.element.date
-                ) { index, record in
-                    CompactRecordRow(record: record, viewModel: viewModel)
-                    if index < min(4, viewModel.visibleWorkdayRecords.count - 1) {
-                        Divider().padding(.leading, 16)
+                if viewModel.visibleWorkdayRecords.isEmpty {
+                    DakaEmptyState(
+                        icon: "calendar.badge.clock",
+                        title: "还没有工作日记录",
+                        detail: "满足打卡条件后，记录会自动出现在这里。"
+                    )
+                    .padding(.vertical, 18)
+                } else {
+                    ForEach(
+                        Array(viewModel.visibleWorkdayRecords.prefix(5).enumerated()),
+                        id: \.element.date
+                    ) { index, record in
+                        CompactRecordRow(record: record, viewModel: viewModel)
+                        if index < min(4, viewModel.visibleWorkdayRecords.count - 1) {
+                            Divider().padding(.leading, 16)
+                        }
                     }
                 }
             }
@@ -813,15 +820,10 @@ private struct DailyRecordsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("每日记录")
-                        .font(.system(size: 27, weight: .bold, design: .rounded))
-                    Text("\(viewModel.visibleWorkdayRecords.count) 个工作日记录")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                }
-                Spacer()
+            DakaPageHeader(
+                "每日记录",
+                subtitle: "\(viewModel.visibleWorkdayRecords.count) 个工作日记录"
+            ) {
                 Button {
                     viewModel.addLeaveDay()
                 } label: {
@@ -835,13 +837,23 @@ private struct DailyRecordsView: View {
             Divider()
 
             ScrollView {
-                LazyVStack(spacing: 9) {
-                    ForEach(viewModel.visibleWorkdayRecords, id: \.date) { record in
-                        DailyRecordCard(record: record, viewModel: viewModel)
+                if viewModel.visibleWorkdayRecords.isEmpty {
+                    DakaEmptyState(
+                        icon: "calendar.badge.clock",
+                        title: "暂无每日记录",
+                        detail: "满足打卡条件后，Daka 会自动记录每日跨度。"
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 320)
+                    .padding(24)
+                } else {
+                    LazyVStack(spacing: 9) {
+                        ForEach(viewModel.visibleWorkdayRecords, id: \.date) { record in
+                            DailyRecordCard(record: record, viewModel: viewModel)
+                        }
                     }
+                    .padding(24)
+                    .frame(maxWidth: 860)
                 }
-                .padding(24)
-                .frame(maxWidth: 860)
             }
         }
     }
@@ -853,13 +865,10 @@ private struct TrendsDashboardView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("趋势")
-                        .font(.system(size: 28, weight: .bold, design: .rounded))
-                    Text("最近的工作时长变化与完成分布。")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                }
+                DakaPageHeader(
+                    "趋势",
+                    subtitle: "最近的工作时长变化与完成分布。"
+                )
 
                 VStack(alignment: .leading, spacing: 14) {
                     HStack {
@@ -884,7 +893,7 @@ private struct TrendsDashboardView: View {
                     .frame(height: 260)
                 }
                 .padding(18)
-                .background(DakaCardBackground())
+                .background(DakaCardBackground(radius: 16))
                 .overlay(DakaCardBorder(radius: 16))
 
                 VStack(alignment: .leading, spacing: 14) {
@@ -901,7 +910,7 @@ private struct TrendsDashboardView: View {
                     .frame(height: 166)
                 }
                 .padding(18)
-                .background(DakaCardBackground())
+                .background(DakaCardBackground(radius: 16))
                 .overlay(DakaCardBorder(radius: 16))
             }
             .padding(30)
@@ -915,15 +924,10 @@ private struct MonthlyDashboardView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text("月度")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                Text(
-                    "月均目标 \(DakaFormatters.duration(viewModel.monthlyAverageTargetSeconds))"
-                )
-                .font(.system(size: 12))
-                .foregroundColor(.secondary)
-            }
+            DakaPageHeader(
+                "月度",
+                subtitle: "月均目标 \(DakaFormatters.duration(viewModel.monthlyAverageTargetSeconds))"
+            )
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 28)
             .padding(.vertical, 22)
@@ -931,16 +935,27 @@ private struct MonthlyDashboardView: View {
             Divider()
 
             ScrollView {
-                LazyVStack(spacing: 10) {
-                    ForEach(viewModel.monthlySummaries, id: \.month) { summary in
-                        MonthlySummaryCard(
-                            summary: summary,
-                            title: viewModel.displayMonth(summary.month)
-                        )
+                if viewModel.monthlySummaries.isEmpty {
+                    DakaEmptyState(
+                        icon: "calendar.badge.clock",
+                        title: "暂无月度汇总",
+                        detail: "产生工作日记录后，这里会展示月均进度。"
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 320)
+                    .padding(24)
+                } else {
+                    LazyVStack(spacing: 10) {
+                        ForEach(viewModel.monthlySummaries, id: \.month) { summary in
+                            MonthlySummaryCard(
+                                summary: summary,
+                                title: viewModel.displayMonth(summary.month),
+                                targetSeconds: viewModel.monthlyAverageTargetSeconds
+                            )
+                        }
                     }
+                    .padding(24)
+                    .frame(maxWidth: 850)
                 }
-                .padding(24)
-                .frame(maxWidth: 850)
             }
         }
     }
@@ -1039,7 +1054,7 @@ private struct DailyRecordCard: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(DakaCardBackground())
+        .background(DakaCardBackground(radius: 14))
         .overlay(DakaCardBorder(radius: 14))
     }
 }
@@ -1047,39 +1062,59 @@ private struct DailyRecordCard: View {
 private struct MonthlySummaryCard: View {
     let summary: MonthlyWorkdaySummary
     let title: String
+    let targetSeconds: TimeInterval
 
     var body: some View {
-        HStack(spacing: 16) {
-            DakaGlyph(icon: "calendar", tint: DakaTheme.blue)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 7) {
-                    Text(title)
-                        .font(.system(size: 14, weight: .semibold))
-                    if !summary.usesChinaCalendarData {
-                        DakaStatusPill(text: "估算", tint: .orange)
+        VStack(spacing: 13) {
+            HStack(spacing: 16) {
+                DakaGlyph(icon: "calendar", tint: DakaTheme.blue)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 7) {
+                        Text(title)
+                            .font(.system(size: 14, weight: .semibold))
+                        if !summary.usesChinaCalendarData {
+                            DakaStatusPill(text: "估算", tint: DakaTheme.orange)
+                        }
                     }
-                }
-                Text(
-                    "\(summary.recordedWorkdayCount) 天有记录 / \(summary.workdayCount) 个工作日"
-                )
-                .font(.system(size: 10))
-                .foregroundColor(.secondary)
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 3) {
-                Text("日均 \(DakaFormatters.duration(summary.averageSeconds))")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                Text("合计 \(DakaFormatters.duration(summary.totalSeconds))")
+                    Text(
+                        "\(summary.recordedWorkdayCount) 天有记录 / \(summary.workdayCount) 个工作日"
+                    )
                     .font(.system(size: 10))
                     .foregroundColor(.secondary)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text("日均 \(DakaFormatters.duration(summary.averageSeconds))")
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                    Text("合计 \(DakaFormatters.duration(summary.totalSeconds))")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+                DakaStatusPill(
+                    text: summary.isPassing ? "达标" : "未达标",
+                    tint: summary.isPassing ? DakaTheme.green : DakaTheme.orange
+                )
             }
-            DakaStatusPill(
-                text: summary.isPassing ? "达标" : "未达标",
-                tint: summary.isPassing ? DakaTheme.green : .red
-            )
+
+            HStack(spacing: 10) {
+                DakaLinearProgress(
+                    value: targetSeconds > 0
+                        ? summary.averageSeconds / targetSeconds
+                        : 0,
+                    tint: summary.isPassing ? DakaTheme.green : DakaTheme.blue
+                )
+                Text(
+                    DakaFormatters.percent(
+                        targetSeconds > 0 ? summary.averageSeconds / targetSeconds : 0
+                    )
+                )
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundColor(summary.isPassing ? DakaTheme.green : DakaTheme.blue)
+                .frame(width: 38, alignment: .trailing)
+            }
         }
         .padding(16)
-        .background(DakaCardBackground())
+        .background(DakaCardBackground(radius: 14))
         .overlay(DakaCardBorder(radius: 14))
     }
 }
@@ -1116,20 +1151,22 @@ private struct DakaMetricCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 11) {
             HStack {
-                Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(tint)
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
                 Spacer()
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(tint)
+                    .frame(width: 28, height: 28)
+                    .background(tint.opacity(0.11))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
             Text(value)
                 .font(.system(size: 21, weight: .bold, design: .rounded))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 11, weight: .semibold))
-                Text(detail)
-                    .font(.system(size: 9))
-                    .foregroundColor(.secondary)
-            }
+            Text(detail)
+                .font(.system(size: 9))
+                .foregroundColor(.secondary)
         }
         .padding(15)
         .frame(maxWidth: .infinity, minHeight: 122, alignment: .leading)
@@ -1198,7 +1235,7 @@ private struct DakaTrendChart: View {
 
     var body: some View {
         Canvas { context, size in
-            let inset = EdgeInsets(top: 12, leading: 16, bottom: 22, trailing: 12)
+            let inset = EdgeInsets(top: 12, leading: 46, bottom: 24, trailing: 12)
             let rect = CGRect(
                 x: inset.leading,
                 y: inset.top,
@@ -1209,17 +1246,36 @@ private struct DakaTrendChart: View {
             guard !values.isEmpty else {
                 return
             }
-            let maxValue = max(targetSeconds, values.max() ?? 1)
+            let observedMin = min(targetSeconds, values.min() ?? targetSeconds)
+            let observedMax = max(targetSeconds, values.max() ?? targetSeconds)
+            let padding = max(30 * 60, (observedMax - observedMin) * 0.18)
+            let lowerBound = max(0, observedMin - padding)
+            let upperBound = max(lowerBound + 1, observedMax + padding)
+            let range = upperBound - lowerBound
+
+            func yPosition(_ value: TimeInterval) -> CGFloat {
+                rect.maxY - rect.height * CGFloat((value - lowerBound) / range)
+            }
 
             for step in 0...3 {
-                let y = rect.minY + rect.height * CGFloat(step) / 3
+                let ratio = Double(step) / 3
+                let tickValue = upperBound - range * ratio
+                let y = rect.minY + rect.height * CGFloat(ratio)
                 var grid = Path()
                 grid.move(to: CGPoint(x: rect.minX, y: y))
                 grid.addLine(to: CGPoint(x: rect.maxX, y: y))
                 context.stroke(grid, with: .color(.primary.opacity(0.07)))
+
+                context.draw(
+                    Text(axisLabel(tickValue))
+                        .font(.system(size: 9, design: .rounded))
+                        .foregroundColor(.secondary),
+                    at: CGPoint(x: rect.minX - 8, y: y),
+                    anchor: .trailing
+                )
             }
 
-            let targetY = rect.maxY - rect.height * CGFloat(targetSeconds / maxValue)
+            let targetY = yPosition(targetSeconds)
             var target = Path()
             target.move(to: CGPoint(x: rect.minX, y: targetY))
             target.addLine(to: CGPoint(x: rect.maxX, y: targetY))
@@ -1235,13 +1291,38 @@ private struct DakaTrendChart: View {
                     ? rect.midX
                     : rect.minX
                         + CGFloat(index) / CGFloat(values.count - 1) * rect.width
-                let y = rect.maxY - CGFloat(value / maxValue) * rect.height
+                let y = yPosition(value)
                 return CGPoint(x: x, y: y)
             }
+
             var line = Path()
-            for (index, point) in points.enumerated() {
-                index == 0 ? line.move(to: point) : line.addLine(to: point)
+            line.move(to: points[0])
+            if points.count == 1 {
+                line.addLine(to: points[0])
+            } else {
+                for index in 0..<(points.count - 1) {
+                    let previous = points[max(0, index - 1)]
+                    let current = points[index]
+                    let next = points[index + 1]
+                    let following = points[min(points.count - 1, index + 2)]
+                    let control1 = CGPoint(
+                        x: current.x + (next.x - previous.x) / 6,
+                        y: current.y + (next.y - previous.y) / 6
+                    )
+                    let control2 = CGPoint(
+                        x: next.x - (following.x - current.x) / 6,
+                        y: next.y - (following.y - current.y) / 6
+                    )
+                    line.addCurve(to: next, control1: control1, control2: control2)
+                }
             }
+
+            var area = line
+            area.addLine(to: CGPoint(x: points.last?.x ?? rect.maxX, y: rect.maxY))
+            area.addLine(to: CGPoint(x: points.first?.x ?? rect.minX, y: rect.maxY))
+            area.closeSubpath()
+            context.fill(area, with: .color(DakaTheme.blue.opacity(0.10)))
+
             context.stroke(
                 line,
                 with: .color(DakaTheme.blue),
@@ -1258,6 +1339,20 @@ private struct DakaTrendChart: View {
                 )
                 context.fill(dot, with: .color(DakaTheme.blue))
             }
+
+            for index in xAxisIndices(count: records.count) {
+                let x =
+                    records.count == 1
+                    ? rect.midX
+                    : rect.minX
+                        + CGFloat(index) / CGFloat(records.count - 1) * rect.width
+                context.draw(
+                    Text(shortDate(records[index].date))
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary),
+                    at: CGPoint(x: x, y: rect.maxY + 15)
+                )
+            }
         }
         .overlay {
             if records.isEmpty {
@@ -1266,6 +1361,29 @@ private struct DakaTrendChart: View {
                     .foregroundColor(.secondary)
             }
         }
+    }
+
+    private func axisLabel(_ seconds: TimeInterval) -> String {
+        let hours = seconds / 3600
+        if abs(hours.rounded() - hours) < 0.05 {
+            return "\(Int(hours.rounded()))h"
+        }
+        return String(format: "%.1fh", hours)
+    }
+
+    private func shortDate(_ dateKey: String) -> String {
+        let components = dateKey.split(separator: "-")
+        guard components.count == 3 else {
+            return dateKey
+        }
+        return "\(Int(components[1]) ?? 0)/\(Int(components[2]) ?? 0)"
+    }
+
+    private func xAxisIndices(count: Int) -> [Int] {
+        guard count > 1 else {
+            return count == 1 ? [0] : []
+        }
+        return Array(Set([0, count / 2, count - 1])).sorted()
     }
 }
 
@@ -1297,28 +1415,46 @@ private struct DakaHeatmap: View {
                     )
                 }
             }
-            HStack(spacing: 14) {
-                HeatLegend(label: "低", color: .red)
-                HeatLegend(label: "中", color: .orange)
-                HeatLegend(label: "高", color: DakaTheme.blue)
-                HeatLegend(label: "达标", color: DakaTheme.green)
+            .overlay {
+                if records.isEmpty {
+                    Text("暂无热力图数据")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                }
+            }
+            HStack(spacing: 8) {
+                Text("少")
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary)
+                ForEach(heatLevels, id: \.self) { opacity in
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(DakaTheme.blue.opacity(opacity))
+                        .frame(width: 10, height: 10)
+                }
+                Text("多")
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary)
+                Spacer()
+                HeatLegend(label: "请假", color: DakaTheme.orange.opacity(0.55))
             }
         }
     }
 
+    private let heatLevels: [Double] = [0.12, 0.30, 0.50, 0.72, 0.94]
+
     private func color(for record: DailyRecord) -> Color {
         guard !record.excludedFromStats else {
-            return .orange.opacity(0.45)
+            return DakaTheme.orange.opacity(0.55)
         }
         switch ProgressStage.stage(
             spanSeconds: record.spanSeconds,
             targetSeconds: targetSeconds
         ) {
-        case .empty: return .secondary.opacity(0.18)
-        case .low: return .red.opacity(0.72)
-        case .medium: return .orange.opacity(0.78)
-        case .high: return DakaTheme.blue.opacity(0.82)
-        case .complete: return DakaTheme.green.opacity(0.88)
+        case .empty: return DakaTheme.blue.opacity(0.12)
+        case .low: return DakaTheme.blue.opacity(0.30)
+        case .medium: return DakaTheme.blue.opacity(0.50)
+        case .high: return DakaTheme.blue.opacity(0.72)
+        case .complete: return DakaTheme.blue.opacity(0.94)
         }
     }
 }
@@ -1339,10 +1475,34 @@ private struct HeatLegend: View {
     }
 }
 
-private struct DakaCardBackground: View {
+private struct DakaEmptyState: View {
+    let icon: String
+    let title: String
+    let detail: String
+
     var body: some View {
-        RoundedRectangle(cornerRadius: 15, style: .continuous)
-            .fill(Color(nsColor: .controlBackgroundColor))
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 24, weight: .medium))
+                .foregroundColor(DakaTheme.blue.opacity(0.75))
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+            Text(detail)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+private struct DakaCardBackground: View {
+    var radius: CGFloat = 15
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: radius, style: .continuous)
+            .fill(DakaTheme.cardFill)
+            .shadow(color: DakaTheme.cardShadow, radius: 7, y: 3)
     }
 }
 
@@ -1351,11 +1511,83 @@ private struct DakaCardBorder: View {
 
     var body: some View {
         RoundedRectangle(cornerRadius: radius, style: .continuous)
-            .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+            .stroke(DakaTheme.cardStroke, lineWidth: 1)
+    }
+}
+
+private struct DakaProgressRing: View {
+    let value: Double
+    var tint: Color = .white
+    var track: Color = .white.opacity(0.30)
+    var lineWidth: CGFloat = 9
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(track, lineWidth: lineWidth)
+            Circle()
+                .trim(from: 0, to: min(1, max(0, value)))
+                .stroke(
+                    tint,
+                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+        }
+    }
+}
+
+private struct DakaPageHeader<Trailing: View>: View {
+    let title: String
+    let subtitle: String
+    let trailing: Trailing
+
+    init(
+        _ title: String,
+        subtitle: String,
+        @ViewBuilder trailing: () -> Trailing
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.trailing = trailing()
+    }
+
+    var body: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title)
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                Text(subtitle)
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+            trailing
+        }
+    }
+}
+
+extension DakaPageHeader where Trailing == EmptyView {
+    init(_ title: String, subtitle: String) {
+        self.init(title, subtitle: subtitle) { EmptyView() }
     }
 }
 
 enum DakaTheme {
-    static let blue = Color(red: 0.13, green: 0.48, blue: 0.96)
-    static let green = Color(red: 0.10, green: 0.65, blue: 0.40)
+    static let blue = Color(red: 0.18, green: 0.42, blue: 0.94)
+    static let green = Color(red: 0.08, green: 0.62, blue: 0.41)
+    static let orange = Color(red: 0.93, green: 0.52, blue: 0.10)
+    static let red = Color(red: 0.88, green: 0.24, blue: 0.21)
+
+    static let heroGradient = LinearGradient(
+        colors: [
+            Color(red: 0.14, green: 0.34, blue: 0.88),
+            Color(red: 0.08, green: 0.58, blue: 0.62),
+        ],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
+    static let cardFill = Color(nsColor: .controlBackgroundColor)
+    static let cardStroke = Color.primary.opacity(0.07)
+    static let cardShadow = Color.black.opacity(0.05)
 }

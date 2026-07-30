@@ -584,6 +584,7 @@ private struct ConditionDraft {
     enum Kind: CaseIterable, Hashable {
         case screenUnlocked
         case wifiConnected
+        case bluetoothSignal
         case powerConnected
         case networkReachable
         case timeRange
@@ -592,6 +593,7 @@ private struct ConditionDraft {
             switch self {
             case .screenUnlocked: return "屏幕已解锁"
             case .wifiConnected: return "连接 Wi-Fi"
+            case .bluetoothSignal: return "蓝牙信号"
             case .powerConnected: return "插入电源"
             case .networkReachable: return "网络可达"
             case .timeRange: return "时间范围"
@@ -609,6 +611,7 @@ private struct ConditionDraft {
             switch self {
             case .screenUnlocked, .powerConnected: return nil
             case .wifiConnected: return nil
+            case .bluetoothSignal: return "设备 UUID"
             case .networkReachable: return "主机名或 IP"
             case .timeRange: return "开始，例如 08:00"
             }
@@ -617,6 +620,7 @@ private struct ConditionDraft {
         var secondaryPlaceholder: String? {
             switch self {
             case .screenUnlocked, .wifiConnected, .powerConnected: return nil
+            case .bluetoothSignal: return "最低信号，例如 -65"
             case .networkReachable: return "端口，例如 443"
             case .timeRange: return "结束，例如 20:00"
             }
@@ -626,6 +630,7 @@ private struct ConditionDraft {
             switch self {
             case .screenUnlocked: return "屏幕未锁定且屏保未运行时满足。"
             case .wifiConnected: return "从当前可见 Wi-Fi 中选择一个 SSID，后续连接到它时满足。"
+            case .bluetoothSignal: return "设备最近可见且蓝牙信号达到阈值时满足。"
             case .powerConnected: return "Mac 接入外部电源时满足。"
             case .networkReachable: return "能建立 TCP 连接时满足，适合公司内网探测。"
             case .timeRange: return "当前时间落在范围内时满足，支持跨午夜。"
@@ -636,7 +641,7 @@ private struct ConditionDraft {
             switch self {
             case .screenUnlocked, .powerConnected:
                 return true
-            case .wifiConnected, .networkReachable, .timeRange:
+            case .wifiConnected, .bluetoothSignal, .networkReachable, .timeRange:
                 return false
             }
         }
@@ -645,9 +650,14 @@ private struct ConditionDraft {
     var kind: Kind
     var primary: String = ""
     var secondary: String = ""
+    var tertiary: String = ""
 
     init(kind: Kind) {
         self.kind = kind
+        if kind == .bluetoothSignal {
+            secondary = "-65"
+            tertiary = "蓝牙设备"
+        }
     }
 
     init(condition: TimerCondition) {
@@ -657,6 +667,11 @@ private struct ConditionDraft {
         case .wifiConnected(let ssid):
             self.kind = .wifiConnected
             self.primary = ssid
+        case .bluetoothSignal(let identifier, let name, let minimumRSSI):
+            self.kind = .bluetoothSignal
+            self.primary = identifier
+            self.secondary = String(minimumRSSI)
+            self.tertiary = name
         case .powerConnected:
             self.kind = .powerConnected
         case .networkReachable(let host, let port):
@@ -676,6 +691,18 @@ private struct ConditionDraft {
             return .screenUnlocked
         case .wifiConnected:
             return primary.isEmpty ? nil : .wifiConnected(ssid: primary)
+        case .bluetoothSignal:
+            guard
+                !primary.isEmpty,
+                let minimumRSSI = DakaInputValidator.bluetoothRSSI(secondary)
+            else {
+                return nil
+            }
+            return .bluetoothSignal(
+                identifier: primary,
+                name: tertiary.isEmpty ? "蓝牙设备" : tertiary,
+                minimumRSSI: minimumRSSI
+            )
         case .powerConnected:
             return .powerConnected
         case .networkReachable:
@@ -699,6 +726,8 @@ private struct ConditionDraft {
             return "屏幕已解锁"
         case .wifiConnected:
             return "Wi-Fi：\(primary.isEmpty ? "未设置" : primary)"
+        case .bluetoothSignal:
+            return "蓝牙：\(tertiary) \(secondary.isEmpty ? "-65" : secondary) dBm"
         case .powerConnected:
             return "插入电源"
         case .networkReachable:

@@ -8,6 +8,7 @@ public enum MatchMode: String, Codable, Sendable {
 public enum TimerCondition: Codable, Equatable, Hashable, Sendable {
     case screenUnlocked
     case wifiConnected(ssid: String)
+    case bluetoothSignal(identifier: String, name: String, minimumRSSI: Int)
     case powerConnected
     case networkReachable(host: String, port: Int)
     case timeRange(start: String, end: String)
@@ -15,6 +16,9 @@ public enum TimerCondition: Codable, Equatable, Hashable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case type
         case ssid
+        case identifier
+        case name
+        case minimumRSSI
         case host
         case port
         case start
@@ -24,6 +28,7 @@ public enum TimerCondition: Codable, Equatable, Hashable, Sendable {
     private enum Kind: String, Codable {
         case screenUnlocked
         case wifiConnected
+        case bluetoothSignal
         case powerConnected
         case networkReachable
         case timeRange
@@ -38,6 +43,12 @@ public enum TimerCondition: Codable, Equatable, Hashable, Sendable {
             self = .screenUnlocked
         case .wifiConnected:
             self = .wifiConnected(ssid: try container.decode(String.self, forKey: .ssid))
+        case .bluetoothSignal:
+            self = .bluetoothSignal(
+                identifier: try container.decode(String.self, forKey: .identifier),
+                name: try container.decode(String.self, forKey: .name),
+                minimumRSSI: try container.decode(Int.self, forKey: .minimumRSSI)
+            )
         case .powerConnected:
             self = .powerConnected
         case .networkReachable:
@@ -62,6 +73,11 @@ public enum TimerCondition: Codable, Equatable, Hashable, Sendable {
         case .wifiConnected(let ssid):
             try container.encode(Kind.wifiConnected, forKey: .type)
             try container.encode(ssid, forKey: .ssid)
+        case .bluetoothSignal(let identifier, let name, let minimumRSSI):
+            try container.encode(Kind.bluetoothSignal, forKey: .type)
+            try container.encode(identifier, forKey: .identifier)
+            try container.encode(name, forKey: .name)
+            try container.encode(minimumRSSI, forKey: .minimumRSSI)
         case .powerConnected:
             try container.encode(Kind.powerConnected, forKey: .type)
         case .networkReachable(let host, let port):

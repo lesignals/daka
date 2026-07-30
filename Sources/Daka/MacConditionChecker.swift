@@ -34,6 +34,11 @@ final class MacConditionChecker: ConditionChecking {
             return isScreenUnlocked() && !isScreenSaverRunning
         case .wifiConnected(let ssid):
             return wifiSSIDMatches(current: currentSSID(), expected: ssid)
+        case .bluetoothSignal(let identifier, _, let minimumRSSI):
+            return BluetoothSignalMatcher.matches(
+                currentRSSI: BluetoothDeviceScanner.shared.signal(for: identifier),
+                minimumRSSI: minimumRSSI
+            )
         case .powerConnected:
             return isPowerConnected()
         case .networkReachable(let host, let port):
