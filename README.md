@@ -34,6 +34,10 @@ xcode-select --install
 
 ## 推荐安装：Homebrew
 
+Formula 由公开的
+[iBreaker/homebrew-daka](https://github.com/iBreaker/homebrew-daka) Tap
+仓库提供。
+
 首次安装并启动：
 
 ```bash
