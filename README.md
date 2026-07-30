@@ -1,231 +1,460 @@
 # Daka
 
-macOS menu bar tracker for recording the first and last time a configurable rule matches each day.
+Daka 是一个原生 macOS 菜单栏打卡时长记录工具。它根据可配置的规则，
+记录每天第一次和最后一次满足条件的时间，并提供每日进度、记录管理、
+趋势图、工作日热力图和月度统计。
 
-## Install
+当前版本：`0.3.0`
+
+## 系统要求
+
+- macOS 12 Monterey 或更高版本
+- Apple Silicon 或 Intel Mac
+- 使用 Homebrew 或源码安装时，需要安装 Xcode Command Line Tools
+
+如未安装 Command Line Tools：
 
 ```bash
-./scripts/install-autostart.sh
+xcode-select --install
 ```
 
-This builds `Daka.app` once, installs it at `~/Applications/Daka.app`, registers
-`local.daka.menu` as a LaunchAgent, and starts it immediately. Login startup
-launches the installed app directly; it does not rebuild the project.
+## 推荐安装：Homebrew
 
-Existing config and clock records are kept in:
+首次安装并启动：
+
+```bash
+brew install iBreaker/daka/daka
+brew services start iBreaker/daka/daka
+```
+
+查看安装信息和服务状态：
+
+```bash
+brew info iBreaker/daka/daka
+brew services list | grep daka
+```
+
+打开 Daka 主界面或设置页：
+
+```bash
+daka --show
+daka --show-settings
+```
+
+暂停、恢复或重启后台服务：
+
+```bash
+brew services stop iBreaker/daka/daka
+brew services start iBreaker/daka/daka
+brew services restart iBreaker/daka/daka
+```
+
+### 升级
+
+```bash
+brew update
+brew upgrade iBreaker/daka/daka
+brew services restart iBreaker/daka/daka
+```
+
+升级不会删除已有配置和打卡记录。
+
+### 卸载
+
+```bash
+brew services stop iBreaker/daka/daka
+brew uninstall iBreaker/daka/daka
+```
+
+卸载程序不会删除用户数据。数据仍保存在：
 
 ```text
 ~/Library/Application Support/Daka/
 ```
 
-To remove only the login startup item, without deleting the app or its data:
+如果确认不再需要数据，可先在 Finder 中检查并手动删除：
+
+```bash
+open "$HOME/Library/Application Support/Daka"
+```
+
+## 从 GitHub Release 安装
+
+从 [Releases](https://github.com/iBreaker/daka/releases) 下载最新的
+`Daka-<version>-macos.zip`，解压后将 `Daka.app` 移动到
+`~/Applications` 或 `/Applications`。
+
+命令行示例：
+
+```bash
+mkdir -p "$HOME/Applications"
+curl -L \
+  -o "$HOME/Downloads/Daka-0.3.0-macos.zip" \
+  "https://github.com/iBreaker/daka/releases/download/v0.3.0/Daka-0.3.0-macos.zip"
+ditto -x -k \
+  "$HOME/Downloads/Daka-0.3.0-macos.zip" \
+  "$HOME/Applications"
+open "$HOME/Applications/Daka.app"
+```
+
+Release 中的应用使用 ad-hoc 签名，因为项目目前没有 Developer ID
+证书。首次打开时如被 macOS 拦截，请在 Finder 中右键
+`Daka.app`，选择“打开”，再确认一次。
+
+直接下载的 Release 应用不会自动注册登录启动。需要自动启动时，推荐
+使用 Homebrew，或使用下面的源码安装脚本。
+
+## 从源码安装
+
+```bash
+git clone https://github.com/iBreaker/daka.git
+cd daka
+./scripts/install-autostart.sh
+```
+
+脚本会：
+
+1. 构建 release 版本的 `Daka.app`。
+2. 安装到 `~/Applications/Daka.app`。
+3. 注册 `local.daka.menu` LaunchAgent。
+4. 立即启动，并在以后登录 macOS 时自动启动。
+
+停止源码安装的登录启动项：
 
 ```bash
 ./scripts/uninstall-autostart.sh
 ```
 
-## Install with Homebrew
+这个脚本只移除 LaunchAgent，不会删除 `Daka.app`，也不会删除配置和
+打卡记录。
 
-```bash
-brew install iBreaker/daka/daka
-brew services start daka
-```
-
-To stop it:
-
-```bash
-brew services stop daka
-```
-
-The Homebrew formula also builds and runs a real app bundle so macOS can attach
-Wi-Fi location permission to a stable bundle identifier.
-
-To build a release app without installing it:
+单独构建应用但不安装：
 
 ```bash
 ./scripts/build-app.sh
 ```
 
-The default build uses an ad-hoc signature and never asks for a signing-key
-password. Release maintainers can provide a Developer ID identity explicitly:
+指定输出路径：
 
 ```bash
-DAKA_SIGN_IDENTITY="Developer ID Application: ..." ./scripts/build-app.sh
+./scripts/build-app.sh --output "$PWD/.build/Daka.app"
 ```
 
-## Permission
+默认使用 ad-hoc 签名，不需要签名证书或钥匙串密码。发布维护者可以显式
+指定 Developer ID：
 
-Daka requests location permission only when a Wi-Fi condition is configured.
-macOS requires this permission to expose the current SSID. The menu shows the
-permission state and links to System Settings when user action is required.
+```bash
+DAKA_SIGN_IDENTITY="Developer ID Application: Example" \
+  ./scripts/build-app.sh
+```
 
-## Behavior
+> 不要同时运行 Homebrew service 和源码安装的 LaunchAgent。
+> Daka 只允许一个实例运行，两套启动方式会互相冲突。
 
-Daka does not calculate active-only time. It records:
+## 首次使用
+
+1. 启动后，在 macOS 菜单栏找到 Daka 的时长和进度图标。
+2. 点击“打开 Daka”进入主界面。
+3. 在“设置 → 目标”配置每日、月均和每周目标。
+4. 在“设置 → 条件”配置满足打卡条件的规则。
+5. 如果使用 Wi-Fi 条件，按系统提示授予定位权限。
+6. 当当天第一次满足条件时，确认已经完成实际打卡。
+
+首次满足条件时，Daka 会显示确认提示：
+
+- `已打卡`：写入今天的首次满足时间并开始记录。
+- `稍后提醒`：暂不写入首次时间，10 分钟后再次提醒。
+
+## 计时方式
+
+Daka 记录的是每天第一次到最后一次满足规则的时间跨度：
 
 ```text
-firstMatchedAt = today's first time the rule matched
-lastMatchedAt  = today's latest time the rule matched
-duration       = lastMatchedAt - firstMatchedAt
+首次时间 = 当天确认打卡后第一次满足规则的时间
+最后时间 = 当天最近一次满足规则的时间
+今日跨度 = 最后时间 - 首次时间
 ```
 
-If the rule is unmatched in the middle of the day, that gap is not subtracted.
+Daka 不是活跃时长统计器。一天中间如果暂时不满足规则，这段间隔不会从
+今日跨度中扣除。
 
-When the rule matches for the first time each day, Daka asks you to confirm that you have clocked in. The first time is written only after you click `已打卡`. Choosing `稍后提醒` delays the next reminder.
+暂停统计后，Daka 不再更新最后满足时间，恢复后继续按规则判断。
 
-Daka compares today's duration with a configurable daily target. The default target is `10.5` hours.
+## 主界面
 
-Configuration and statistics are edited through the menu bar UI. SQLite is the storage layer, not the user-facing interface.
+| 页面 | 功能 |
+| --- | --- |
+| 今日 | 今日跨度、完成率、剩余时长、首次/最后满足时间、本月平均、最近记录 |
+| 每日记录 | 查看记录、编辑首次/最后时间、标记请假、恢复计入统计 |
+| 趋势 | 最近工作日时长趋势、每日目标线、完成热力图 |
+| 月度 | 自然月工作日数、有记录天数、总时长、日均时长、是否达标 |
+| 设置 | 目标、匹配条件、提醒、权限、存储状态和运行控制 |
 
-## UI
+菜单栏提供以下操作：
 
-Daka opens into a unified dashboard with five sections:
+| 操作 | 快捷键 | 说明 |
+| --- | --- | --- |
+| 确认今日已打卡 | `⌘D` | 首次满足条件后确认开始记录 |
+| 打开 Daka | `⌘O` | 打开主界面 |
+| 设置 | `⌘,` | 直接打开完整设置 |
+| 添加请假日 | `⌘L` | 将指定日期排除在统计之外 |
+| 暂停/恢复统计 | `⌘P` | 控制自动记录更新 |
+| 退出 | `⌘Q` | 退出菜单栏应用 |
+
+## 目标设置
+
+在“设置 → 目标”中可以设置：
+
+- 每日目标：今日进度条和达标状态的基准。
+- 月均目标：月度平均时长的达标基准。
+- 每周目标：休息日前提醒使用的累计目标。
+
+时长以小时为单位，支持小数，例如 `10.5`。
+
+## 匹配条件
+
+在“设置 → 条件”中可以配置检查间隔和条件关系。
+
+条件关系：
+
+- `全部满足`：所有条件都满足时才记录。
+- `任一满足`：任意一个条件满足时即记录。
+
+支持的条件：
+
+| 条件 | 参数 | 说明 |
+| --- | --- | --- |
+| 屏幕已解锁 | 无 | 屏幕未锁定且屏保未运行时满足 |
+| 连接 Wi-Fi | SSID | 当前连接的 Wi-Fi 名称完全匹配时满足 |
+| 插入电源 | 无 | Mac 使用外部电源时满足 |
+| 网络可达 | 主机、端口 | 能建立 TCP 连接时满足 |
+| 时间范围 | 开始、结束 | 当前时间在范围内时满足，支持跨午夜 |
+
+Wi-Fi SSID 匹配区分大小写、空格和标点。可以点击“刷新”读取当前及附近
+可见网络，也可以手动输入名称。
+
+检查间隔必须是 `10` 到 `86400` 之间的整数秒。
+
+## Wi-Fi 定位权限
+
+macOS 需要定位权限才能向应用提供当前 Wi-Fi SSID。Daka 只在规则中
+存在 Wi-Fi 条件时请求这个权限。
+
+可以在以下位置查看状态：
 
 ```text
-今日      Live workday progress and recent records
-每日记录  Review, edit, or exclude individual days
-趋势      Duration trend and workday heatmap
-月度      Monthly averages, totals, and target status
-设置      Targets, match rules, reminders, permissions, and runtime controls
+Daka → 设置 → 运行 → Wi-Fi 定位权限
 ```
 
-Menu bar actions:
+如果显示“等待授权”或“需要授权”：
 
-```text
-打开 Daka     Open the dashboard
-设置…         Open the rule editor
-添加请假日…   Mark a date as excluded from statistics
-暂停统计      Pause automatic record updates
-退出          Quit the menu bar app
-```
+1. 点击“打开系统设置”。
+2. 进入“隐私与安全性 → 定位服务”。
+3. 允许 Daka 使用定位服务。
+4. 返回 Daka，等待下一次检查或重启服务。
 
-The config UI supports:
+由于当前发行包采用 ad-hoc 签名，升级或重新构建后 macOS 可能再次要求
+授权。在权限完成前，Wi-Fi 条件不会满足；仅看到进程正在运行不能证明
+Wi-Fi 判断已经正常。
 
-```text
-Match mode: all / any
-Evaluation interval
-Daily target hours
-Monthly average target hours
-Weekly target hours
-Rest-day reminder on/off
-Rest-day reminder times
-Rest-day reminder messages
-Add/remove conditions
-Condition parameters
-Wi-Fi SSID selection from nearby/current networks
-```
+## 每日记录与请假
 
-SSID matching is exact, including letter case and spaces. Time values are
-validated before saving instead of being silently replaced with defaults.
+在“每日记录”中可以：
 
-The menu shows today's progress with a progress bar and a colored status marker:
+- 编辑某一天的首次和最后满足时间。
+- 将某一天标记为请假，不计入月度和每周统计。
+- 取消请假或排除状态，恢复计入统计。
+- 为尚无记录的日期添加请假日。
 
-```text
-red     under 40%
-orange  40% - 74%
-blue    75% - 99%
-green   complete
-```
+编辑时间时，首次和最后时间必须属于记录日期，且最后时间不能早于首次
+时间。
 
-## Storage
+## 月度工作日统计
 
-Config is stored in `app_config`; daily records are stored in `daily_records`. The default config is:
-
-The SQLite database is:
-
-```text
-~/Library/Application Support/Daka/daka.sqlite
-```
-
-Older `config.json` and `records.json` files are imported automatically. Normal
-recording updates only the affected date rather than rewriting every historical
-row.
-
-```json
-{
-  "evaluationIntervalSeconds": 60,
-  "targetDurationSeconds": 37800,
-  "rule": {
-    "name": "Default",
-    "matchMode": "all",
-    "conditions": [
-      {
-        "type": "screenUnlocked"
-      }
-    ]
-  }
-}
-```
-
-Supported condition types:
-
-```json
-{ "type": "screenUnlocked" }
-{ "type": "wifiConnected", "ssid": "Company WiFi" }
-{ "type": "powerConnected" }
-{ "type": "networkReachable", "host": "intranet.company.local", "port": 443 }
-{ "type": "timeRange", "start": "08:00", "end": "20:00" }
-```
-
-Example:
-
-```json
-{
-  "evaluationIntervalSeconds": 60,
-  "rule": {
-    "name": "Office",
-    "matchMode": "all",
-    "conditions": [
-      {
-        "type": "screenUnlocked"
-      },
-      {
-        "type": "wifiConnected",
-        "ssid": "Company WiFi"
-      },
-      {
-        "type": "powerConnected"
-      }
-    ]
-  }
-}
-```
-
-Use `配置...` from the menu bar to edit and save the rule.
-
-## Monthly Workday Statistics
-
-The statistics window includes a `月度` tab. It calculates each natural month's average duration across China workdays.
-
-China workdays are loaded from the public `holiday-calendar` CN JSON data and cached locally:
+Daka 使用中国工作日历计算自然月统计。日历数据来自公开的
+`holiday-calendar` CN 数据，并缓存到：
 
 ```text
 ~/Library/Application Support/Daka/ChinaCalendar/
 ```
 
-If a year cannot be loaded yet, Daka temporarily falls back to Monday-Friday
-for that year and labels the result `估算`. Requests use HTTP cache validation
-and bounded timeouts. Missing workday records count as `0m`, and the current
-month is calculated only through yesterday so an unfinished day does not lower
-the monthly average.
+月度计算规则：
 
-## Rest-Day Reminder
+- 只统计中国工作日。
+- 标记为请假的日期从工作日分母中移除。
+- 没有有效记录的工作日按 `0` 计入。
+- 当前日期尚未结束，不计入当月平均值。
+- 当年日历暂时无法获取时，先按周一到周五估算，并在界面标记为“估算”。
 
-Daka can warn when the current China workweek has not reached the configured weekly target and a rest day is near:
+## 休息日前提醒
 
-```text
-Last workday before a rest day: shows the rest-day reminder after its configured time
-Day before the last workday: shows the day-before reminder after its configured time
+在“设置 → 提醒”中可以设置：
+
+- 是否启用提醒。
+- 最后一个工作日的提醒时间和文案。
+- 最后一个工作日前一天的提醒时间和文案。
+- 每周累计目标。
+
+当本周累计时长未达到目标且休息日临近时，提醒会显示本周总时长、已过
+工作日平均时长、周目标和剩余时长。每类提醒每天最多显示一次。
+
+## 数据与隐私
+
+Daka 没有远程账户，也不会把打卡记录上传到 Daka 服务。主要数据保存在
+本机：
+
+| 内容 | 路径 |
+| --- | --- |
+| SQLite 配置与记录 | `~/Library/Application Support/Daka/daka.sqlite` |
+| 中国工作日历缓存 | `~/Library/Application Support/Daka/ChinaCalendar/` |
+| 源码安装日志 | `~/Library/Logs/Daka/` |
+| 源码安装 LaunchAgent | `~/Library/LaunchAgents/local.daka.menu.plist` |
+| 暂停状态和提醒状态 | `~/Library/Preferences/local.daka.menu.plist` |
+
+Daka 只会因以下功能访问网络：
+
+- 下载并缓存公开的中国工作日历。
+- 执行用户配置的“网络可达”条件。
+
+旧版本的 `config.json` 和 `records.json` 会在首次打开 SQLite 数据库时
+自动迁移。
+
+### 备份数据
+
+SQLite 的在线备份命令可以在 Daka 运行时安全执行：
+
+```bash
+mkdir -p "$HOME/Documents/Daka Backups"
+sqlite3 \
+  "$HOME/Library/Application Support/Daka/daka.sqlite" \
+  ".backup '$HOME/Documents/Daka Backups/daka.sqlite'"
 ```
 
-Both reminder times and messages are editable in the dashboard's `设置 → 提醒`
-section. Each reminder is shown only once per day. The reminder includes total
-weekly duration, average duration per elapsed China workday, weekly target, and
-remaining duration.
+验证备份：
 
-## Test
+```bash
+sqlite3 "$HOME/Documents/Daka Backups/daka.sqlite" \
+  "PRAGMA integrity_check;"
+```
+
+正常结果应为：
+
+```text
+ok
+```
+
+## 故障排查
+
+### 菜单栏没有 Daka
+
+Homebrew 安装：
+
+```bash
+brew services list | grep daka
+brew services restart iBreaker/daka/daka
+tail -n 100 "$(brew --prefix)/var/log/daka.log"
+```
+
+源码安装：
+
+```bash
+launchctl print "gui/$UID/local.daka.menu"
+./scripts/install-autostart.sh
+tail -n 100 "$HOME/Library/Logs/Daka/stderr.log"
+```
+
+### 应用运行但没有更新时间
+
+依次检查：
+
+1. “设置 → 运行”中自动统计是否已暂停。
+2. 当天第一次满足条件后是否已经点击“已打卡”。
+3. “设置 → 条件”中的全部条件是否真实满足。
+4. 使用 Wi-Fi 条件时，定位权限是否已经授权。
+5. 当前 SSID 是否与配置完全一致。
+
+### 打不开主界面
+
+Homebrew 安装：
+
+```bash
+daka --show
+```
+
+源码或 Release 安装：
+
+```bash
+"$HOME/Applications/Daka.app/Contents/MacOS/daka" --show
+```
+
+如果已经有一个实例运行，这条命令只通知现有实例打开窗口，不会启动第二
+个进程。
+
+### 同时存在两套安装
+
+先停止两种自动启动方式，再只启用其中一种：
+
+```bash
+brew services stop iBreaker/daka/daka
+launchctl bootout "gui/$UID/local.daka.menu"
+```
+
+如果 LaunchAgent 不存在，第二条命令提示错误可以忽略。随后选择 Homebrew
+或源码安装方式重新启动。
+
+### 数据存储异常
+
+先备份 `daka.sqlite`，再查看：
+
+```bash
+sqlite3 "$HOME/Library/Application Support/Daka/daka.sqlite" \
+  "PRAGMA integrity_check;"
+```
+
+不要在 Daka 运行时直接手工修改 SQLite 记录；应用内存中的当天记录可能
+再次覆盖手工修改结果。
+
+## 开发
+
+运行测试：
 
 ```bash
 swift test
-./scripts/check-release.sh
 ```
+
+构建 release：
+
+```bash
+swift build -c release
+```
+
+构建并验证应用包：
+
+```bash
+./scripts/build-app.sh
+./scripts/verify-app.sh ".build/Daka.app" "$(cat VERSION)"
+```
+
+完整发布元数据检查：
+
+```bash
+./scripts/check-release.sh
+brew style Formula/daka.rb
+```
+
+生成界面预览：
+
+```bash
+.build/release/daka \
+  --render-preview /tmp/daka-preview.png
+
+.build/release/daka \
+  --render-preview /tmp/daka-settings.png \
+  --preview-settings \
+  --preview-runtime
+```
+
+## 许可证
+
+当前仓库尚未声明标准开源许可证。使用、分发或二次发布前，请先联系项目
+维护者确认授权范围。
