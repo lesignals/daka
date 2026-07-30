@@ -1,4 +1,5 @@
 import CoreBluetooth
+import DakaCore
 import Foundation
 
 struct BluetoothDeviceOption: Identifiable, Equatable {
@@ -20,12 +21,11 @@ final class BluetoothDeviceScanner: NSObject, CBCentralManagerDelegate {
     private struct DeviceRecord {
         var identifier: String
         var name: String
-        var samples: [Int]
+        var signalWindow: BluetoothSignalSampleWindow
         var lastSeenAt: Date
 
-        var smoothedRSSI: Int {
-            let sorted = samples.sorted()
-            return sorted[sorted.count / 2]
+        func smoothedRSSI(at date: Date) -> Int? {
+            signalWindow.smoothedRSSI(at: date)
         }
     }
 
@@ -60,12 +60,14 @@ final class BluetoothDeviceScanner: NSObject, CBCentralManagerDelegate {
 
     func discover(
         for duration: TimeInterval = 4,
-        completion: @escaping ([BluetoothDeviceOption]) -> Void
+        completion: @escaping (
+            Result<[BluetoothDeviceOption], BluetoothAvailability>
+        ) -> Void
     ) {
         bluetoothQueue.async { [weak self] in
             guard let self else {
                 DispatchQueue.main.async {
-                    completion([])
+                    completion(.failure(.initializing))
                 }
                 return
             }
@@ -75,7 +77,18 @@ final class BluetoothDeviceScanner: NSObject, CBCentralManagerDelegate {
             self.startScanningIfPossible()
 
             self.bluetoothQueue.asyncAfter(deadline: .now() + duration) {
-                let options = self.availableDevices(maxAge: max(15, duration + 2))
+                let result: Result<
+                    [BluetoothDeviceOption],
+                    BluetoothAvailability
+                >
+                let availability = self.availability()
+                if availability == .ready {
+                    result = .success(
+                        self.availableDevices(maxAge: max(15, duration + 2))
+                    )
+                } else {
+                    result = .failure(availability)
+                }
                 if generation == self.discoveryGeneration {
                     self.discoveryGeneration = 0
                     if !self.monitoringEnabled {
@@ -83,7 +96,7 @@ final class BluetoothDeviceScanner: NSObject, CBCentralManagerDelegate {
                     }
                 }
                 DispatchQueue.main.async {
-                    completion(options)
+                    completion(result)
                 }
             }
         }
@@ -137,12 +150,11 @@ final class BluetoothDeviceScanner: NSObject, CBCentralManagerDelegate {
         var record = records[identifier] ?? DeviceRecord(
             identifier: identifier,
             name: name,
-            samples: [],
+            signalWindow: BluetoothSignalSampleWindow(),
             lastSeenAt: now
         )
         record.name = name
-        record.samples.append(rssi)
-        record.samples = Array(record.samples.suffix(5))
+        record.signalWindow.record(rssi, at: now)
         record.lastSeenAt = now
         records[identifier] = record
         stateLock.unlock()
@@ -190,28 +202,33 @@ final class BluetoothDeviceScanner: NSObject, CBCentralManagerDelegate {
         for identifier: String,
         maxAge: TimeInterval
     ) -> Int? {
+        let now = Date()
         stateLock.lock()
         defer { stateLock.unlock() }
         guard
             let record = records[identifier],
-            Date().timeIntervalSince(record.lastSeenAt) <= maxAge
+            now.timeIntervalSince(record.lastSeenAt) <= maxAge
         else {
             return nil
         }
-        return record.smoothedRSSI
+        return record.smoothedRSSI(at: now)
     }
 
     private func availableDevices(maxAge: TimeInterval) -> [BluetoothDeviceOption] {
-        let cutoff = Date().addingTimeInterval(-maxAge)
+        let now = Date()
+        let cutoff = now.addingTimeInterval(-maxAge)
         stateLock.lock()
         let options = records.values.compactMap { record -> BluetoothDeviceOption? in
-            guard record.lastSeenAt >= cutoff else {
+            guard
+                record.lastSeenAt >= cutoff,
+                let rssi = record.smoothedRSSI(at: now)
+            else {
                 return nil
             }
             return BluetoothDeviceOption(
                 identifier: record.identifier,
                 name: record.name,
-                rssi: record.smoothedRSSI,
+                rssi: rssi,
                 lastSeenAt: record.lastSeenAt
             )
         }
@@ -222,6 +239,25 @@ final class BluetoothDeviceScanner: NSObject, CBCentralManagerDelegate {
                 return $0.rssi > $1.rssi
             }
             return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
+    }
+
+    private func availability() -> BluetoothAvailability {
+        switch bluetoothManager().state {
+        case .poweredOn:
+            return .ready
+        case .unknown:
+            return .initializing
+        case .resetting:
+            return .resetting
+        case .poweredOff:
+            return .poweredOff
+        case .unauthorized:
+            return .unauthorized
+        case .unsupported:
+            return .unsupported
+        @unknown default:
+            return .unsupported
         }
     }
 

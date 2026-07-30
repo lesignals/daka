@@ -1,3 +1,4 @@
+import AppKit
 import DakaCore
 import SwiftUI
 
@@ -22,6 +23,10 @@ struct DakaSettingsView: View {
             header
             Divider()
             content
+            if section != .runtime {
+                Divider()
+                saveBar
+            }
         }
     }
 
@@ -43,6 +48,7 @@ struct DakaSettingsView: View {
             }
             .labelsHidden()
             .pickerStyle(.segmented)
+            .frame(height: 28)
         }
         .padding(.horizontal, 28)
         .padding(.top, 22)
@@ -90,8 +96,6 @@ struct DakaSettingsView: View {
                     suffix: "小时"
                 )
             }
-
-            saveArea
         }
     }
 
@@ -153,6 +157,9 @@ struct DakaSettingsView: View {
                         ssidLoading: draft.ssidLoading,
                         bluetoothOptions: draft.bluetoothOptions,
                         bluetoothLoading: draft.bluetoothLoading,
+                        bluetoothAvailability: draft.bluetoothAvailability,
+                        bluetoothScanCompleted: draft.bluetoothScanCompleted,
+                        bluetoothMonitoring: draft.bluetoothMonitoring,
                         canRemove: draft.conditions.count > 1,
                         onRefreshSSIDs: {
                             draft.refreshSSIDs(
@@ -162,14 +169,21 @@ struct DakaSettingsView: View {
                         onRefreshBluetooth: {
                             draft.refreshBluetoothDevices()
                         },
+                        onOpenBluetoothSettings: {
+                            openBluetoothSettings()
+                        },
+                        onToggleBluetoothMonitoring: {
+                            draft.toggleBluetoothMonitoring()
+                        },
                         onRemove: {
                             draft.removeCondition(at: index)
                         }
                     )
                 }
             }
-
-            saveArea
+        }
+        .onDisappear {
+            draft.stopBluetoothMonitoring()
         }
     }
 
@@ -222,8 +236,6 @@ struct DakaSettingsView: View {
                     value: $draft.dayBeforeRestReminderMessage
                 )
             }
-
-            saveArea
         }
     }
 
@@ -305,8 +317,8 @@ struct DakaSettingsView: View {
         }
     }
 
-    private var saveArea: some View {
-        VStack(alignment: .leading, spacing: 10) {
+    private var saveBar: some View {
+        HStack(spacing: 12) {
             if let message = draft.message {
                 Label(
                     message,
@@ -318,17 +330,18 @@ struct DakaSettingsView: View {
                 .foregroundColor(draft.hasError ? .red : DakaTheme.green)
             }
 
-            HStack {
-                Spacer()
-                Button {
-                    save()
-                } label: {
-                    Label("保存设置", systemImage: "checkmark")
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
+            Spacer()
+            Button {
+                save()
+            } label: {
+                Label("保存设置", systemImage: "checkmark")
             }
+            .buttonStyle(.borderedProminent)
+            .keyboardShortcut(.defaultAction)
         }
+        .padding(.horizontal, 28)
+        .frame(height: 58)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     private func settingsScroll<Content: View>(
@@ -354,6 +367,22 @@ struct DakaSettingsView: View {
         } catch {
             draft.show(error: error)
         }
+    }
+
+    private func openBluetoothSettings() {
+        let urlString: String
+        switch draft.bluetoothAvailability?.recoveryAction {
+        case .openBluetoothSettings:
+            urlString = "x-apple.systempreferences:com.apple.BluetoothSettings"
+        case .openBluetoothPrivacySettings:
+            urlString = "x-apple.systempreferences:com.apple.preference.security?Privacy_Bluetooth"
+        case nil:
+            return
+        }
+        guard let url = URL(string: urlString) else {
+            return
+        }
+        NSWorkspace.shared.open(url)
     }
 }
 
@@ -400,11 +429,15 @@ private final class DakaSettingsDraft: ObservableObject {
     @Published var ssidLoading = false
     @Published var bluetoothOptions: [BluetoothDeviceOption] = []
     @Published var bluetoothLoading = false
+    @Published var bluetoothAvailability: BluetoothAvailability?
+    @Published var bluetoothScanCompleted = false
+    @Published var bluetoothMonitoring = false
     @Published var message: String?
     @Published var hasError = false
 
     private let ruleName: String
     private var ssidLoadGeneration = 0
+    private var bluetoothMonitorTimer: Timer?
 
     init(config: AppConfig) {
         ruleName = config.rule.name
@@ -467,10 +500,63 @@ private final class DakaSettingsDraft: ObservableObject {
     }
 
     func refreshBluetoothDevices() {
-        bluetoothLoading = true
-        BluetoothDeviceScanner.shared.discover { [weak self] options in
-            self?.bluetoothOptions = options
-            self?.bluetoothLoading = false
+        scanBluetoothDevices(duration: 4, showsLoading: true)
+    }
+
+    func toggleBluetoothMonitoring() {
+        if bluetoothMonitoring {
+            stopBluetoothMonitoring()
+        } else {
+            startBluetoothMonitoring()
+        }
+    }
+
+    func stopBluetoothMonitoring() {
+        bluetoothMonitorTimer?.invalidate()
+        bluetoothMonitorTimer = nil
+        bluetoothMonitoring = false
+    }
+
+    private func startBluetoothMonitoring() {
+        stopBluetoothMonitoring()
+        bluetoothMonitoring = true
+        scanBluetoothDevices(duration: 1.2, showsLoading: false)
+
+        let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in
+            self?.scanBluetoothDevices(duration: 1.2, showsLoading: false)
+        }
+        bluetoothMonitorTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func scanBluetoothDevices(
+        duration: TimeInterval,
+        showsLoading: Bool
+    ) {
+        if showsLoading {
+            bluetoothLoading = true
+            bluetoothScanCompleted = false
+        }
+        bluetoothAvailability = nil
+
+        BluetoothDeviceScanner.shared.discover(
+            for: duration
+        ) { [weak self] result in
+            guard let self else {
+                return
+            }
+            switch result {
+            case let .success(options):
+                self.bluetoothOptions = options
+            case let .failure(availability):
+                self.bluetoothOptions = []
+                self.bluetoothAvailability = availability
+                self.stopBluetoothMonitoring()
+            }
+            self.bluetoothScanCompleted = true
+            if showsLoading {
+                self.bluetoothLoading = false
+            }
         }
     }
 
@@ -787,11 +873,12 @@ private struct SettingsCard<Content: View>: View {
         .padding(.vertical, 16)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
+                .fill(DakaTheme.cardFill)
+                .shadow(color: DakaTheme.cardShadow, radius: 7, y: 3)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.primary.opacity(0.07), lineWidth: 1)
+                .stroke(DakaTheme.cardStroke, lineWidth: 1)
         )
     }
 }
@@ -897,9 +984,14 @@ private struct ConditionEditorCard: View {
     let ssidLoading: Bool
     let bluetoothOptions: [BluetoothDeviceOption]
     let bluetoothLoading: Bool
+    let bluetoothAvailability: BluetoothAvailability?
+    let bluetoothScanCompleted: Bool
+    let bluetoothMonitoring: Bool
     let canRemove: Bool
     let onRefreshSSIDs: () -> Void
     let onRefreshBluetooth: () -> Void
+    let onOpenBluetoothSettings: () -> Void
+    let onToggleBluetoothMonitoring: () -> Void
     let onRemove: () -> Void
 
     var body: some View {
@@ -933,11 +1025,12 @@ private struct ConditionEditorCard: View {
         .padding(16)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
+                .fill(DakaTheme.cardFill)
+                .shadow(color: DakaTheme.cardShadow, radius: 7, y: 3)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color.primary.opacity(0.07), lineWidth: 1)
+                .stroke(DakaTheme.cardStroke, lineWidth: 1)
         )
     }
 
@@ -1016,6 +1109,37 @@ private struct ConditionEditorCard: View {
                     .disabled(bluetoothLoading)
                 }
 
+                if let availability = bluetoothAvailability,
+                   let message = availability.message {
+                    HStack(spacing: 10) {
+                        Label(message, systemImage: "exclamationmark.triangle.fill")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(DakaTheme.orange)
+                        Spacer()
+                        if availability.recoveryAction != nil {
+                            Button(
+                                recoveryButtonTitle(for: availability),
+                                action: onOpenBluetoothSettings
+                            )
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                } else if
+                    bluetoothScanCompleted,
+                    bluetoothOptions.isEmpty
+                {
+                    Label(
+                        "未发现附近设备，请保持设备可发现后重试。",
+                        systemImage: "info.circle"
+                    )
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                }
+
+                if !condition.primary.isEmpty {
+                    bluetoothSignalStatus
+                }
+
                 HStack(spacing: 10) {
                     Text("最低信号")
                         .font(.system(size: 12, weight: .medium))
@@ -1045,6 +1169,80 @@ private struct ConditionEditorCard: View {
                 TextField("结束，例如 20:00", text: $condition.secondary)
                     .textFieldStyle(.roundedBorder)
             }
+        }
+    }
+
+    private var bluetoothSignalStatus: some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(bluetoothSignalColor)
+                .frame(width: 8, height: 8)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(bluetoothMonitoring ? "实时信号" : "最近信号")
+                        .font(.system(size: 11, weight: .medium))
+                    Text(
+                        selectedBluetoothDevice.map { "\($0.rssi) dBm" }
+                            ?? "等待设备广播"
+                    )
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                }
+                if let device = selectedBluetoothDevice {
+                    HStack(spacing: 4) {
+                        Text(
+                            device.rssi >= bluetoothThreshold
+                                ? "已达到阈值"
+                                : "未达到阈值"
+                        )
+                        Text("·")
+                        Text(device.lastSeenAt, style: .relative)
+                    }
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                }
+            }
+            Spacer()
+            Button(
+                bluetoothMonitoring ? "停止监控" : "开始监控",
+                action: onToggleBluetoothMonitoring
+            )
+            .buttonStyle(.bordered)
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 52)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(bluetoothSignalColor.opacity(0.09))
+        )
+    }
+
+    private var selectedBluetoothDevice: BluetoothDeviceOption? {
+        bluetoothOptions.first { $0.identifier == condition.primary }
+    }
+
+    private var bluetoothThreshold: Int {
+        Int(condition.secondary) ?? -65
+    }
+
+    private var bluetoothSignalColor: Color {
+        guard let device = selectedBluetoothDevice else {
+            return .secondary
+        }
+        return device.rssi >= bluetoothThreshold
+            ? DakaTheme.green
+            : DakaTheme.orange
+    }
+
+    private func recoveryButtonTitle(
+        for availability: BluetoothAvailability
+    ) -> String {
+        switch availability.recoveryAction {
+        case .openBluetoothSettings:
+            return "打开蓝牙设置"
+        case .openBluetoothPrivacySettings:
+            return "打开隐私设置"
+        case nil:
+            return "打开系统设置"
         }
     }
 }

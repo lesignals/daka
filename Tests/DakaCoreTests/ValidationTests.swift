@@ -35,6 +35,56 @@ struct ValidationTests {
         #expect(!BluetoothSignalMatcher.matches(currentRSSI: nil, minimumRSSI: -65))
     }
 
+    @Test func bluetoothSignalWindowUsesFiveSampleMedian() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var window = BluetoothSignalSampleWindow()
+
+        [-80, -50, -70, -60, -40].enumerated().forEach { index, rssi in
+            window.record(
+                rssi,
+                at: start.addingTimeInterval(TimeInterval(index))
+            )
+        }
+
+        #expect(
+            window.smoothedRSSI(at: start.addingTimeInterval(5)) == -60
+        )
+    }
+
+    @Test func bluetoothSignalWindowExpiresAndResetsAfterLongAbsence() {
+        let start = Date(timeIntervalSince1970: 2_000)
+        var window = BluetoothSignalSampleWindow(sampleLifetime: 30)
+
+        for offset in 0..<5 {
+            window.record(
+                -50,
+                at: start.addingTimeInterval(TimeInterval(offset))
+            )
+        }
+
+        #expect(
+            window.smoothedRSSI(at: start.addingTimeInterval(35)) == nil
+        )
+
+        window.record(-90, at: start.addingTimeInterval(40))
+        #expect(
+            window.smoothedRSSI(at: start.addingTimeInterval(40)) == -90
+        )
+    }
+
+    @Test func bluetoothAvailabilityProvidesDistinctRecoveryActions() {
+        #expect(
+            BluetoothAvailability.poweredOff.recoveryAction
+                == .openBluetoothSettings
+        )
+        #expect(
+            BluetoothAvailability.unauthorized.recoveryAction
+                == .openBluetoothPrivacySettings
+        )
+        #expect(BluetoothAvailability.unsupported.recoveryAction == nil)
+        #expect(BluetoothAvailability.ready.message == nil)
+    }
+
     @Test func bluetoothRSSIThresholdAcceptsPracticalRangeOnly() {
         #expect(DakaInputValidator.bluetoothRSSI("-65") == -65)
         #expect(DakaInputValidator.bluetoothRSSI("-100") == -100)

@@ -142,8 +142,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        evaluationInProgress = true
         let now = Date()
+        guard !statsPaused else {
+            lastMatched = false
+            currentRecord = recorder.update(
+                record: currentRecord,
+                matched: false,
+                at: now
+            )
+            showRestDayReminderIfNeeded(at: now)
+            renderStatusTitle()
+            renderMenu()
+            updateDashboardIfVisible()
+            return
+        }
+
+        evaluationInProgress = true
         let rule = config.rule
         let checker = checker
 
@@ -347,6 +361,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func toggleStatsPaused() {
         statsPaused.toggle()
         UserDefaults.standard.set(statsPaused, forKey: "Daka.statsPaused")
+        configureBluetoothMonitoring()
         evaluateAndRender()
     }
 
@@ -581,7 +596,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return false
         }
-        BluetoothDeviceScanner.shared.setMonitoringEnabled(required)
+        BluetoothDeviceScanner.shared.setMonitoringEnabled(
+            required && !statsPaused
+        )
     }
 
     @objc private func openLocationSettings() {
