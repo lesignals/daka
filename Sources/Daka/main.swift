@@ -3,9 +3,8 @@ import DakaCore
 import Darwin
 import Foundation
 
-if
-    CommandLine.arguments.contains("--show")
-        || CommandLine.arguments.contains("--show-settings")
+if CommandLine.arguments.contains("--show")
+    || CommandLine.arguments.contains("--show-settings")
 {
     DistributedNotificationCenter.default().post(
         name: Notification.Name("local.daka.menu.show"),
@@ -16,8 +15,7 @@ if
     exit(0)
 }
 
-if
-    let previewIndex = CommandLine.arguments.firstIndex(of: "--render-preview"),
+if let previewIndex = CommandLine.arguments.firstIndex(of: "--render-preview"),
     CommandLine.arguments.indices.contains(previewIndex + 1)
 {
     let outputURL = URL(

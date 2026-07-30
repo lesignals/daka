@@ -12,7 +12,7 @@ enum DakaPreviewFixtures {
                     conditions: [
                         .screenUnlocked,
                         .powerConnected,
-                        .wifiConnected(ssid: "Demo Office")
+                        .wifiConnected(ssid: "Demo Office"),
                     ]
                 ),
                 evaluationIntervalSeconds: 60,
@@ -38,7 +38,7 @@ enum DakaPreviewFixtures {
         let today = calendar.startOfDay(for: Date())
         let durationMinutes = [
             569, 647, 622, 680, 604,
-            635, 653, 590, 666, 617
+            635, 653, 590, 666, 617,
         ]
         var records: [DailyRecord] = []
 

@@ -32,18 +32,18 @@ final class MacConditionChecker: ConditionChecking {
         switch condition {
         case .screenUnlocked:
             return isScreenUnlocked() && !isScreenSaverRunning
-        case let .wifiConnected(ssid):
+        case .wifiConnected(let ssid):
             return wifiSSIDMatches(current: currentSSID(), expected: ssid)
-        case let .bluetoothSignal(identifier, _, minimumRSSI):
+        case .bluetoothSignal(let identifier, _, let minimumRSSI):
             return BluetoothSignalMatcher.matches(
                 currentRSSI: BluetoothDeviceScanner.shared.signal(for: identifier),
                 minimumRSSI: minimumRSSI
             )
         case .powerConnected:
             return isPowerConnected()
-        case let .networkReachable(host, port):
+        case .networkReachable(let host, let port):
             return isReachable(host: host, port: port)
-        case let .timeRange(start, end):
+        case .timeRange(let start, let end):
             return isInTimeRange(start: start, end: end, at: date)
         }
     }
@@ -75,7 +75,8 @@ final class MacConditionChecker: ConditionChecking {
     private func isReachable(host: String, port: Int) -> Bool {
         let endpoint = Endpoint(host: host, port: port)
         if let cached = reachabilityCache[endpoint],
-           Date().timeIntervalSince(cached.checkedAt) <= 15 {
+            Date().timeIntervalSince(cached.checkedAt) <= 15
+        {
             return cached.reachable
         }
 
@@ -110,7 +111,8 @@ final class MacConditionChecker: ConditionChecking {
 
     private func isInTimeRange(start: String, end: String, at date: Date) -> Bool {
         guard let startMinutes = minutes(from: start),
-              let endMinutes = minutes(from: end) else {
+            let endMinutes = minutes(from: end)
+        else {
             return false
         }
 
@@ -127,10 +129,11 @@ final class MacConditionChecker: ConditionChecking {
     private func minutes(from value: String) -> Int? {
         let parts = value.split(separator: ":")
         guard parts.count == 2,
-              let hour = Int(parts[0]),
-              let minute = Int(parts[1]),
-              (0...23).contains(hour),
-              (0...59).contains(minute) else {
+            let hour = Int(parts[0]),
+            let minute = Int(parts[1]),
+            (0...23).contains(hour),
+            (0...59).contains(minute)
+        else {
             return nil
         }
 

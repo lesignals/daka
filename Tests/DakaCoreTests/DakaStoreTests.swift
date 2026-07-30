@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import DakaCore
 
 struct DakaStoreTests {
@@ -51,12 +52,12 @@ struct DakaStoreTests {
 
     @Test func oldRecordJSONDefaultsToIncludedInStats() throws {
         let json = """
-        {
-          "date": "2026-05-20",
-          "firstMatchedAt": "2026-05-20T09:00:00Z",
-          "lastMatchedAt": "2026-05-20T18:00:00Z"
-        }
-        """
+            {
+              "date": "2026-05-20",
+              "firstMatchedAt": "2026-05-20T09:00:00Z",
+              "lastMatchedAt": "2026-05-20T18:00:00Z"
+            }
+            """
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
@@ -72,7 +73,7 @@ struct DakaStoreTests {
         let records = [
             DailyRecord(date: "2026-05-18", firstMatchedAt: first, lastMatchedAt: last),
             DailyRecord(date: "2026-05-19", firstMatchedAt: first, lastMatchedAt: last, excludedFromStats: true),
-            DailyRecord(date: "2026-05-20", firstMatchedAt: first, lastMatchedAt: last)
+            DailyRecord(date: "2026-05-20", firstMatchedAt: first, lastMatchedAt: last),
         ]
         let monthlyDate = try #require(ISO8601DateFormatter().date(from: "2026-05-21T12:00:00Z"))
         let weeklyDate = try #require(ISO8601DateFormatter().date(from: "2026-05-20T12:00:00Z"))
@@ -141,7 +142,7 @@ struct DakaStoreTests {
                 date: "2026-05-20",
                 firstMatchedAt: first,
                 lastMatchedAt: first.addingTimeInterval(2 * 60 * 60)
-            )
+            ),
         ]
         let date = try #require(ISO8601DateFormatter().date(from: "2026-05-20T12:00:00Z"))
 

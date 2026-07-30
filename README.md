@@ -459,6 +459,12 @@ sqlite3 "$HOME/Library/Application Support/Daka/daka.sqlite" \
 
 ## 开发
 
+运行格式和静态检查：
+
+```bash
+./scripts/lint.sh
+```
+
 运行测试：
 
 ```bash
@@ -484,6 +490,21 @@ swift build -c release
 ./scripts/check-release.sh
 brew style Formula/daka.rb
 ```
+
+提交前运行完整质量门禁：
+
+```bash
+./scripts/quality-gate.sh
+```
+
+GitHub 上的每个 Pull Request 都会执行同一套 `Quality Gate`。合入 `main`
+前必须通过门禁、获得至少一次审核批准，并解决全部审核对话。门禁包含：
+
+- `swift-format` 严格检查
+- Shell 脚本语法和 Git 空白错误检查
+- Swift 单元测试
+- 将编译器警告视为错误的 Release 构建
+- App 包、版本元数据和 Homebrew Formula 验证
 
 生成界面预览：
 

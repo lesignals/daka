@@ -59,7 +59,8 @@ public final class ChinaWorkdayCalendar {
             appropriateFor: nil,
             create: true
         ) {
-            self.cacheDirectory = appSupport
+            self.cacheDirectory =
+                appSupport
                 .appendingPathComponent("Daka", isDirectory: true)
                 .appendingPathComponent("ChinaCalendar", isDirectory: true)
         } else {
@@ -74,7 +75,8 @@ public final class ChinaWorkdayCalendar {
         var result: [Int: ChinaHolidayYear] = [:]
         for year in years {
             guard let data = try? Data(contentsOf: cacheURL(for: year)),
-                  let holidayYear = try? decoder.decode(ChinaHolidayYear.self, from: data) else {
+                let holidayYear = try? decoder.decode(ChinaHolidayYear.self, from: data)
+            else {
                 continue
             }
             result[year] = holidayYear
@@ -90,8 +92,9 @@ public final class ChinaWorkdayCalendar {
                 for baseURL in [Self.primaryDataBaseURL, Self.fallbackDataBaseURL] {
                     let url = baseURL.appendingPathComponent("\(year).json")
                     guard let data = Self.download(url),
-                          let holidayYear = try? decoder.decode(ChinaHolidayYear.self, from: data),
-                          holidayYear.year == year else {
+                        let holidayYear = try? decoder.decode(ChinaHolidayYear.self, from: data),
+                        holidayYear.year == year
+                    else {
                         continue
                     }
 
@@ -116,9 +119,10 @@ public final class ChinaWorkdayCalendar {
         let task = downloadSession.dataTask(with: request) { data, response, error in
             defer { finished.signal() }
             guard error == nil,
-                  let response = response as? HTTPURLResponse,
-                  (200...299).contains(response.statusCode),
-                  let data else {
+                let response = response as? HTTPURLResponse,
+                (200...299).contains(response.statusCode),
+                let data
+            else {
                 return
             }
             box.set(data)
@@ -219,7 +223,8 @@ public enum MonthlyWorkdaySummarizer {
 
         return months.compactMap { month in
             guard let year = Int(month.prefix(4)),
-                  let monthNumber = Int(month.suffix(2)) else {
+                let monthNumber = Int(month.suffix(2))
+            else {
                 return nil
             }
 
@@ -229,7 +234,8 @@ public enum MonthlyWorkdaySummarizer {
                 before: month == currentMonth ? todayKey : nil
             )
             let holidayYear = holidayYears[year]
-            let workdayKeys = dateKeys
+            let workdayKeys =
+                dateKeys
                 .filter { calendar.isWorkday(dateKey: $0, holidayYear: holidayYear) }
                 .filter { recordByDate[$0]?.excludedFromStats != true }
             guard !workdayKeys.isEmpty else {
@@ -263,7 +269,8 @@ public enum MonthlyWorkdaySummarizer {
         components.day = 1
 
         guard let start = components.date,
-              let range = components.calendar?.range(of: .day, in: .month, for: start) else {
+            let range = components.calendar?.range(of: .day, in: .month, for: start)
+        else {
             return []
         }
 

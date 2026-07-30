@@ -1,5 +1,5 @@
-import Darwin
 import DakaCore
+import Darwin
 import Foundation
 
 struct WiFiSystemProfiler {
@@ -48,7 +48,8 @@ struct WiFiSystemProfiler {
         let temporaryURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("Daka-WiFi-\(UUID().uuidString).txt")
         guard FileManager.default.createFile(atPath: temporaryURL.path, contents: nil),
-              let outputHandle = try? FileHandle(forWritingTo: temporaryURL) else {
+            let outputHandle = try? FileHandle(forWritingTo: temporaryURL)
+        else {
             return nil
         }
         defer {

@@ -77,10 +77,11 @@ final class BluetoothDeviceScanner: NSObject, CBCentralManagerDelegate {
             self.startScanningIfPossible()
 
             self.bluetoothQueue.asyncAfter(deadline: .now() + duration) {
-                let result: Result<
-                    [BluetoothDeviceOption],
-                    BluetoothAvailability
-                >
+                let result:
+                    Result<
+                        [BluetoothDeviceOption],
+                        BluetoothAvailability
+                    >
                 let availability = self.availability()
                 if availability == .ready {
                     result = .success(
@@ -132,27 +133,30 @@ final class BluetoothDeviceScanner: NSObject, CBCentralManagerDelegate {
         _ central: CBCentralManager,
         didDiscover peripheral: CBPeripheral,
         advertisementData: [String: Any],
-        rssi RSSI: NSNumber
+        rssi rssiValue: NSNumber
     ) {
-        let rssi = RSSI.intValue
-        guard rssi != 127, (-127 ... 20).contains(rssi) else {
+        let rssi = rssiValue.intValue
+        guard rssi != 127, (-127...20).contains(rssi) else {
             return
         }
 
         let identifier = peripheral.identifier.uuidString
         let advertisedName = advertisementData[CBAdvertisementDataLocalNameKey] as? String
-        let name = nonempty(advertisedName)
+        let name =
+            nonempty(advertisedName)
             ?? nonempty(peripheral.name)
             ?? "未命名设备"
         let now = Date()
 
         stateLock.lock()
-        var record = records[identifier] ?? DeviceRecord(
-            identifier: identifier,
-            name: name,
-            signalWindow: BluetoothSignalSampleWindow(),
-            lastSeenAt: now
-        )
+        var record =
+            records[identifier]
+            ?? DeviceRecord(
+                identifier: identifier,
+                name: name,
+                signalWindow: BluetoothSignalSampleWindow(),
+                lastSeenAt: now
+            )
         record.name = name
         record.signalWindow.record(rssi, at: now)
         record.lastSeenAt = now

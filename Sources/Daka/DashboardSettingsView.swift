@@ -464,9 +464,10 @@ private final class DakaSettingsDraft: ObservableObject {
         let usedSingletons = Set(
             conditions.filter(\.kind.isSingleton).map(\.kind)
         )
-        let kind = DakaConditionDraft.Kind.allCases.first {
-            !$0.isSingleton || !usedSingletons.contains($0)
-        } ?? .wifiConnected
+        let kind =
+            DakaConditionDraft.Kind.allCases.first {
+                !$0.isSingleton || !usedSingletons.contains($0)
+            } ?? .wifiConnected
         conditions.append(DakaConditionDraft(kind: kind))
         clearMessage()
     }
@@ -546,9 +547,9 @@ private final class DakaSettingsDraft: ObservableObject {
                 return
             }
             switch result {
-            case let .success(options):
+            case .success(let options):
                 self.bluetoothOptions = options
-            case let .failure(availability):
+            case .failure(let availability):
                 self.bluetoothOptions = []
                 self.bluetoothAvailability = availability
                 self.stopBluetoothMonitoring()
@@ -763,21 +764,21 @@ private struct DakaConditionDraft {
         switch condition {
         case .screenUnlocked:
             kind = .screenUnlocked
-        case let .wifiConnected(ssid):
+        case .wifiConnected(let ssid):
             kind = .wifiConnected
             primary = ssid
-        case let .bluetoothSignal(identifier, name, minimumRSSI):
+        case .bluetoothSignal(let identifier, let name, let minimumRSSI):
             kind = .bluetoothSignal
             primary = identifier
             secondary = String(minimumRSSI)
             tertiary = name
         case .powerConnected:
             kind = .powerConnected
-        case let .networkReachable(host, port):
+        case .networkReachable(let host, let port):
             kind = .networkReachable
             primary = host
             secondary = String(port)
-        case let .timeRange(start, end):
+        case .timeRange(let start, let end):
             kind = .timeRange
             primary = start
             secondary = end
@@ -835,7 +836,7 @@ private enum DakaSettingsValidationError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case let .message(message):
+        case .message(let message):
             return message
         }
     }
@@ -1071,8 +1072,7 @@ private struct ConditionEditorCard: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 10) {
                     Picker("蓝牙设备", selection: $condition.primary) {
-                        if
-                            !condition.primary.isEmpty,
+                        if !condition.primary.isEmpty,
                             !bluetoothOptions.contains(where: {
                                 $0.identifier == condition.primary
                             })
@@ -1110,7 +1110,8 @@ private struct ConditionEditorCard: View {
                 }
 
                 if let availability = bluetoothAvailability,
-                   let message = availability.message {
+                    let message = availability.message
+                {
                     HStack(spacing: 10) {
                         Label(message, systemImage: "exclamationmark.triangle.fill")
                             .font(.system(size: 11, weight: .medium))
@@ -1124,8 +1125,7 @@ private struct ConditionEditorCard: View {
                             .buttonStyle(.bordered)
                         }
                     }
-                } else if
-                    bluetoothScanCompleted,
+                } else if bluetoothScanCompleted,
                     bluetoothOptions.isEmpty
                 {
                     Label(

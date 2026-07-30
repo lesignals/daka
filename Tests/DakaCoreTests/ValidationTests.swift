@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import DakaCore
 
 struct ValidationTests {
@@ -39,7 +40,7 @@ struct ValidationTests {
         let start = Date(timeIntervalSince1970: 1_000)
         var window = BluetoothSignalSampleWindow()
 
-        [-80, -50, -70, -60, -40].enumerated().forEach { index, rssi in
+        for (index, rssi) in [-80, -50, -70, -60, -40].enumerated() {
             window.record(
                 rssi,
                 at: start.addingTimeInterval(TimeInterval(index))
@@ -101,12 +102,13 @@ struct ValidationTests {
         let lastInput = try #require(makeDate("2026-07-28 18:45", calendar: calendar))
         let record = DailyRecord(date: "2026-05-20")
 
-        let updated = try #require(DailyRecordTimeEditor.updating(
-            record,
-            firstTime: firstInput,
-            lastTime: lastInput,
-            calendar: calendar
-        ))
+        let updated = try #require(
+            DailyRecordTimeEditor.updating(
+                record,
+                firstTime: firstInput,
+                lastTime: lastInput,
+                calendar: calendar
+            ))
 
         #expect(dateTime(updated.firstMatchedAt, calendar: calendar) == "2026-05-20 09:15")
         #expect(dateTime(updated.lastMatchedAt, calendar: calendar) == "2026-05-20 18:45")
@@ -118,12 +120,13 @@ struct ValidationTests {
         let first = try #require(makeDate("2026-07-28 18:00", calendar: calendar))
         let last = try #require(makeDate("2026-07-28 09:00", calendar: calendar))
 
-        #expect(DailyRecordTimeEditor.updating(
-            DailyRecord(date: "2026-05-20"),
-            firstTime: first,
-            lastTime: last,
-            calendar: calendar
-        ) == nil)
+        #expect(
+            DailyRecordTimeEditor.updating(
+                DailyRecord(date: "2026-05-20"),
+                firstTime: first,
+                lastTime: last,
+                calendar: calendar
+            ) == nil)
     }
 
     @Test func systemProfilerParserPreservesSSIDCaseSpacesAndColons() {

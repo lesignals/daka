@@ -59,14 +59,17 @@ public struct AppConfig: Codable, Equatable, Sendable {
         self.evaluationIntervalSeconds = try container.decode(TimeInterval.self, forKey: .evaluationIntervalSeconds)
         self.targetDurationSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .targetDurationSeconds) ?? 10.5 * 60 * 60
         self.monthlyAverageTargetSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .monthlyAverageTargetSeconds) ?? self.targetDurationSeconds
-        self.restDayReminderEnabled = try container.decodeIfPresent(Bool.self, forKey: .restDayReminderEnabled)
+        self.restDayReminderEnabled =
+            try container.decodeIfPresent(Bool.self, forKey: .restDayReminderEnabled)
             ?? (try container.decodeIfPresent(Bool.self, forKey: .weeklyWarningEnabled) ?? true)
         self.weeklyTargetSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .weeklyTargetSeconds) ?? self.targetDurationSeconds * 5
         self.restDayReminderTime = try container.decodeIfPresent(String.self, forKey: .restDayReminderTime) ?? Self.defaultRestDayReminderTime
         self.dayBeforeRestReminderTime = try container.decodeIfPresent(String.self, forKey: .dayBeforeRestReminderTime) ?? Self.defaultDayBeforeRestReminderTime
-        self.restDayReminderMessage = try container.decodeIfPresent(String.self, forKey: .restDayReminderMessage)
+        self.restDayReminderMessage =
+            try container.decodeIfPresent(String.self, forKey: .restDayReminderMessage)
             ?? (try container.decodeIfPresent(String.self, forKey: .weeklyWarningMessage) ?? Self.defaultRestDayReminderMessage)
-        self.dayBeforeRestReminderMessage = try container.decodeIfPresent(String.self, forKey: .dayBeforeRestReminderMessage)
+        self.dayBeforeRestReminderMessage =
+            try container.decodeIfPresent(String.self, forKey: .dayBeforeRestReminderMessage)
             ?? (try container.decodeIfPresent(String.self, forKey: .weeklyPreRestReminderMessage) ?? Self.defaultDayBeforeRestReminderMessage)
     }
 
@@ -163,7 +166,8 @@ public final class DakaStore {
         try prepare(sql, statement: &statement)
 
         guard sqlite3_step(statement) == SQLITE_ROW,
-              let text = sqlite3_column_text(statement, 0) else {
+            let text = sqlite3_column_text(statement, 0)
+        else {
             try saveConfig(.default)
             return .default
         }
@@ -179,12 +183,12 @@ public final class DakaStore {
         }
 
         let sql = """
-        INSERT INTO app_config(key, value, updated_at)
-        VALUES('default', ?, ?)
-        ON CONFLICT(key) DO UPDATE SET
-            value = excluded.value,
-            updated_at = excluded.updated_at;
-        """
+            INSERT INTO app_config(key, value, updated_at)
+            VALUES('default', ?, ?)
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = excluded.updated_at;
+            """
 
         var statement: OpaquePointer?
         defer {
@@ -199,10 +203,10 @@ public final class DakaStore {
 
     public func loadRecords() throws -> [DailyRecord] {
         let sql = """
-        SELECT date, first_matched_at, last_matched_at, excluded_from_stats
-        FROM daily_records
-        ORDER BY date ASC;
-        """
+            SELECT date, first_matched_at, last_matched_at, excluded_from_stats
+            FROM daily_records
+            ORDER BY date ASC;
+            """
 
         var statement: OpaquePointer?
         defer {
@@ -217,12 +221,13 @@ public final class DakaStore {
             let firstMatchedAt = optionalDate(statement, column: 1)
             let lastMatchedAt = optionalDate(statement, column: 2)
             let excludedFromStats = sqlite3_column_int(statement, 3) != 0
-            records.append(DailyRecord(
-                date: date,
-                firstMatchedAt: firstMatchedAt,
-                lastMatchedAt: lastMatchedAt,
-                excludedFromStats: excludedFromStats
-            ))
+            records.append(
+                DailyRecord(
+                    date: date,
+                    firstMatchedAt: firstMatchedAt,
+                    lastMatchedAt: lastMatchedAt,
+                    excludedFromStats: excludedFromStats
+                ))
         }
 
         return records
@@ -238,14 +243,14 @@ public final class DakaStore {
 
     public func upsertRecord(_ record: DailyRecord) throws {
         let sql = """
-        INSERT INTO daily_records(date, first_matched_at, last_matched_at, excluded_from_stats, updated_at)
-        VALUES(?, ?, ?, ?, ?)
-        ON CONFLICT(date) DO UPDATE SET
-            first_matched_at = excluded.first_matched_at,
-            last_matched_at = excluded.last_matched_at,
-            excluded_from_stats = excluded.excluded_from_stats,
-            updated_at = excluded.updated_at;
-        """
+            INSERT INTO daily_records(date, first_matched_at, last_matched_at, excluded_from_stats, updated_at)
+            VALUES(?, ?, ?, ?, ?)
+            ON CONFLICT(date) DO UPDATE SET
+                first_matched_at = excluded.first_matched_at,
+                last_matched_at = excluded.last_matched_at,
+                excluded_from_stats = excluded.excluded_from_stats,
+                updated_at = excluded.updated_at;
+            """
 
         var statement: OpaquePointer?
         defer {
@@ -272,22 +277,24 @@ public final class DakaStore {
     private func migrateSchema() throws {
         try execute("PRAGMA journal_mode = WAL;")
         try execute("PRAGMA foreign_keys = ON;")
-        try execute("""
-        CREATE TABLE IF NOT EXISTS app_config (
-            key TEXT PRIMARY KEY NOT NULL,
-            value TEXT NOT NULL,
-            updated_at REAL NOT NULL
-        );
-        """)
-        try execute("""
-        CREATE TABLE IF NOT EXISTS daily_records (
-            date TEXT PRIMARY KEY NOT NULL,
-            first_matched_at REAL,
-            last_matched_at REAL,
-            excluded_from_stats INTEGER NOT NULL DEFAULT 0,
-            updated_at REAL NOT NULL
-        );
-        """)
+        try execute(
+            """
+            CREATE TABLE IF NOT EXISTS app_config (
+                key TEXT PRIMARY KEY NOT NULL,
+                value TEXT NOT NULL,
+                updated_at REAL NOT NULL
+            );
+            """)
+        try execute(
+            """
+            CREATE TABLE IF NOT EXISTS daily_records (
+                date TEXT PRIMARY KEY NOT NULL,
+                first_matched_at REAL,
+                last_matched_at REAL,
+                excluded_from_stats INTEGER NOT NULL DEFAULT 0,
+                updated_at REAL NOT NULL
+            );
+            """)
 
         if try !table("daily_records", hasColumn: "excluded_from_stats") {
             try execute("ALTER TABLE daily_records ADD COLUMN excluded_from_stats INTEGER NOT NULL DEFAULT 0;")
@@ -359,7 +366,7 @@ public final class DakaStore {
     }
 
     private func bind(_ value: String, to statement: OpaquePointer?, index: Int32) throws {
-        if sqlite3_bind_text(statement, index, value, -1, SQLITE_TRANSIENT) != SQLITE_OK {
+        if sqlite3_bind_text(statement, index, value, -1, sqliteTransient) != SQLITE_OK {
             throw StoreError.sqlite(message: lastErrorMessage)
         }
     }
@@ -429,7 +436,7 @@ public final class DakaStore {
     }
 }
 
-private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+private let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
 private enum StoreError: Error {
     case invalidStringEncoding
