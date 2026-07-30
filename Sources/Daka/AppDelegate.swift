@@ -17,8 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let evaluationQueue = DispatchQueue(label: "local.daka.menu.condition-evaluation", qos: .userInitiated)
     private var evaluationInProgress = false
     private var evaluationRequestedWhileBusy = false
-    private var configWindowController: ConfigWindowController?
-    private var statsWindowController: StatsWindowController?
+    private var statsWindowController: DashboardWindowController?
+    private var showDashboardObserver: NSObjectProtocol?
     private var isShowingClockInReminder = false
     private var nextClockInReminderAt: Date?
     private let chinaCalendar = ChinaWorkdayCalendar()
@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statsPaused = UserDefaults.standard.bool(forKey: "Daka.statsPaused")
     private lazy var locationPermissionRequester = LocationPermissionRequester { [weak self] in
         self?.renderMenu()
+        self?.updateDashboardIfVisible()
         self?.evaluateAndRender()
     }
 
@@ -42,6 +43,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         persistCurrentRecord()
+        if let showDashboardObserver {
+            DistributedNotificationCenter.default().removeObserver(
+                showDashboardObserver
+            )
+        }
+    }
+
+    func applicationShouldHandleReopen(
+        _ sender: NSApplication,
+        hasVisibleWindows flag: Bool
+    ) -> Bool {
+        showStats()
+        return true
     }
 
     private func setupStore() {
@@ -98,6 +112,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             self?.evaluateAndRender()
         }
+
+        showDashboardObserver = center.addObserver(
+            forName: Notification.Name("local.daka.menu.show"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let section = (notification.object as? String)
+                .flatMap(DakaDashboardSection.init(rawValue:))
+                ?? .today
+            self?.showDashboard(section: section)
+        }
     }
 
     private func startTimer() {
@@ -150,6 +175,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         renderStatusTitle()
         renderMenu()
+        updateDashboardIfVisible()
 
         if evaluationRequestedWhileBusy {
             evaluationRequestedWhileBusy = false
@@ -223,15 +249,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(.separator())
         }
 
-        let configItem = NSMenuItem(title: "配置...", action: #selector(showConfig), keyEquivalent: ",")
-        configItem.target = self
-        menu.addItem(configItem)
-
-        let recordsItem = NSMenuItem(title: "统计...", action: #selector(showStats), keyEquivalent: "r")
+        let recordsItem = NSMenuItem(
+            title: "打开 Daka",
+            action: #selector(showStats),
+            keyEquivalent: "o"
+        )
         recordsItem.target = self
         menu.addItem(recordsItem)
 
-        let leaveItem = NSMenuItem(title: "添加请假日...", action: #selector(addLeaveDayFromMenu), keyEquivalent: "l")
+        let configItem = NSMenuItem(
+            title: "设置…",
+            action: #selector(showConfig),
+            keyEquivalent: ","
+        )
+        configItem.target = self
+        menu.addItem(configItem)
+
+        let leaveItem = NSMenuItem(title: "添加请假日…", action: #selector(addLeaveDayFromMenu), keyEquivalent: "l")
         leaveItem.target = self
         menu.addItem(leaveItem)
 
@@ -306,19 +340,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func showConfig() {
-        if let configWindowController {
-            configWindowController.update(config: config)
-            configWindowController.showWindow(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
-
-        let controller = ConfigWindowController(config: config) { [weak self] nextConfig in
-            self?.saveConfig(nextConfig) ?? false
-        }
-        configWindowController = controller
-        controller.showWindow(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        showDashboard(section: .settings)
     }
 
     @objc private func toggleStatsPaused() {
@@ -328,29 +350,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func showStats() {
+        showDashboard(section: .today)
+    }
+
+    private func showDashboard(section: DakaDashboardSection) {
         persistCurrentRecord()
 
         if let statsWindowController {
             statsWindowController.update(
                 records: records,
-                targetDurationSeconds: config.targetDurationSeconds,
-                monthlyAverageTargetSeconds: config.monthlyAverageTargetSeconds
+                config: config,
+                conditionMatched: lastMatched,
+                statsPaused: statsPaused,
+                canConfirmClockIn: canConfirmClockIn,
+                locationPermissionTitle: locationPermissionTitle,
+                locationPermissionNeedsAction: locationPermissionNeedsAction,
+                storageError: storageError
             )
-            statsWindowController.showWindow(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            statsWindowController.show(section: section)
             return
         }
 
-        let controller = StatsWindowController(
+        let controller = DashboardWindowController(
             records: records,
-            targetDurationSeconds: config.targetDurationSeconds,
-            monthlyAverageTargetSeconds: config.monthlyAverageTargetSeconds
-        ) { [weak self] updatedRecord in
-            self?.saveRecordFromStats(updatedRecord) ?? false
-        }
+            config: config,
+            conditionMatched: lastMatched,
+            statsPaused: statsPaused,
+            canConfirmClockIn: canConfirmClockIn,
+            locationPermissionTitle: locationPermissionTitle,
+            locationPermissionNeedsAction: locationPermissionNeedsAction,
+            storageError: storageError,
+            onSaveRecord: { [weak self] updatedRecord in
+                self?.saveRecordFromStats(updatedRecord) ?? false
+            },
+            onSaveConfig: { [weak self] nextConfig in
+                self?.saveConfig(nextConfig) ?? false
+            },
+            onTogglePause: { [weak self] in
+                self?.toggleStatsPaused()
+            },
+            onConfirmClockIn: { [weak self] in
+                self?.confirmTodayClockIn()
+            },
+            onOpenLocationSettings: { [weak self] in
+                self?.openLocationSettings()
+            },
+            onShowStorageError: { [weak self] in
+                self?.showStorageError()
+            },
+            onQuit: {
+                NSApp.terminate(nil)
+            }
+        )
         statsWindowController = controller
-        controller.showWindow(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        controller.show(section: section)
     }
 
     @objc private func addLeaveDayFromMenu() {
@@ -363,8 +416,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         markLeaveDay(dateKey)
         statsWindowController?.update(
             records: records,
-            targetDurationSeconds: config.targetDurationSeconds,
-            monthlyAverageTargetSeconds: config.monthlyAverageTargetSeconds
+            config: config,
+            conditionMatched: lastMatched,
+            statsPaused: statsPaused,
+            canConfirmClockIn: canConfirmClockIn,
+            locationPermissionTitle: locationPermissionTitle,
+            locationPermissionNeedsAction: locationPermissionNeedsAction,
+            storageError: storageError
         )
     }
 
@@ -427,6 +485,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         records.sort { $0.date < $1.date }
     }
 
+    private func updateDashboardIfVisible() {
+        statsWindowController?.update(
+            records: records,
+            config: config,
+            conditionMatched: lastMatched,
+            statsPaused: statsPaused,
+            canConfirmClockIn: canConfirmClockIn,
+            locationPermissionTitle: locationPermissionTitle,
+            locationPermissionNeedsAction: locationPermissionNeedsAction,
+            storageError: storageError
+        )
+    }
+
     @discardableResult
     private func persist(record: DailyRecord, operation: String, presentError: Bool) -> Bool {
         guard let store else {
@@ -451,6 +522,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSLog("Daka \(operation) failed: \(error)")
         if statusItem != nil {
             renderMenu()
+            updateDashboardIfVisible()
         }
         if present {
             presentStorageError(operation: operation)
@@ -477,6 +549,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return false
         }
+    }
+
+    private var canConfirmClockIn: Bool {
+        lastMatched
+            && !statsPaused
+            && currentRecord?.firstMatchedAt == nil
+    }
+
+    private var locationPermissionTitle: String {
+        requiresWiFiPermission
+            ? locationPermissionRequester.status.title
+            : "当前规则不需要"
+    }
+
+    private var locationPermissionNeedsAction: Bool {
+        requiresWiFiPermission
+            && locationPermissionRequester.status.needsUserAction
     }
 
     private func requestWiFiPermissionIfNeeded() {
@@ -523,6 +612,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         recordConfirmedClockIn(at: Date())
         renderStatusTitle()
         renderMenu()
+        updateDashboardIfVisible()
     }
 
     private func recordConfirmedClockIn(at date: Date) {

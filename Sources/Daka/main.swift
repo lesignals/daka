@@ -1,6 +1,68 @@
 import AppKit
+import DakaCore
 import Darwin
 import Foundation
+
+if
+    CommandLine.arguments.contains("--show")
+        || CommandLine.arguments.contains("--show-settings")
+{
+    DistributedNotificationCenter.default().post(
+        name: Notification.Name("local.daka.menu.show"),
+        object: CommandLine.arguments.contains("--show-settings")
+            ? DakaDashboardSection.settings.rawValue
+            : DakaDashboardSection.today.rawValue
+    )
+    exit(0)
+}
+
+if
+    let previewIndex = CommandLine.arguments.firstIndex(of: "--render-preview"),
+    CommandLine.arguments.indices.contains(previewIndex + 1)
+{
+    let outputURL = URL(
+        fileURLWithPath: NSString(
+            string: CommandLine.arguments[previewIndex + 1]
+        ).expandingTildeInPath
+    )
+    do {
+        let store = try DakaStore(paths: DakaPaths())
+        let section: DakaDashboardSection
+        if CommandLine.arguments.contains("--preview-records") {
+            section = .records
+        } else if CommandLine.arguments.contains("--preview-trends") {
+            section = .trends
+        } else if CommandLine.arguments.contains("--preview-monthly") {
+            section = .monthly
+        } else if CommandLine.arguments.contains("--preview-settings") {
+            section = .settings
+        } else {
+            section = .today
+        }
+        let settingsSection: DakaSettingsSection
+        if CommandLine.arguments.contains("--preview-conditions") {
+            settingsSection = .conditions
+        } else if CommandLine.arguments.contains("--preview-reminders") {
+            settingsSection = .reminders
+        } else if CommandLine.arguments.contains("--preview-runtime") {
+            settingsSection = .runtime
+        } else {
+            settingsSection = .goals
+        }
+        try renderDakaDashboardPreview(
+            records: store.loadRecords(),
+            config: store.loadConfig(),
+            section: section,
+            settingsSection: settingsSection,
+            outputURL: outputURL
+        )
+        print(outputURL.path)
+        exit(0)
+    } catch {
+        fputs("Daka preview failed: \(error.localizedDescription)\n", stderr)
+        exit(1)
+    }
+}
 
 private enum SingleInstanceLockError: Error {
     case alreadyRunning

@@ -79,14 +79,24 @@ Configuration and statistics are edited through the menu bar UI. SQLite is the s
 
 ## UI
 
+Daka opens into a unified dashboard with five sections:
+
+```text
+今日      Live workday progress and recent records
+每日记录  Review, edit, or exclude individual days
+趋势      Duration trend and workday heatmap
+月度      Monthly averages, totals, and target status
+设置      Targets, match rules, reminders, permissions, and runtime controls
+```
+
 Menu bar actions:
 
 ```text
-配置...   Open the rule editor
-统计...   Open daily records
-添加请假日... Mark a date as excluded from statistics
-暂停统计  Pause automatic record updates
-退出      Quit the menu bar app
+打开 Daka     Open the dashboard
+设置…         Open the rule editor
+添加请假日…   Mark a date as excluded from statistics
+暂停统计      Pause automatic record updates
+退出          Quit the menu bar app
 ```
 
 The config UI supports:
@@ -208,7 +218,10 @@ Last workday before a rest day: shows the rest-day reminder after its configured
 Day before the last workday: shows the day-before reminder after its configured time
 ```
 
-Both reminder times and messages are editable in `配置...`. Each reminder is shown only once per day. The reminder includes total weekly duration, average duration per elapsed China workday, weekly target, and remaining duration.
+Both reminder times and messages are editable in the dashboard's `设置 → 提醒`
+section. Each reminder is shown only once per day. The reminder includes total
+weekly duration, average duration per elapsed China workday, weekly target, and
+remaining duration.
 
 ## Test
 

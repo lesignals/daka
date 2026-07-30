@@ -642,7 +642,7 @@ enum LeaveDayPicker {
     }
 }
 
-private enum RecordEditor {
+enum RecordEditor {
     static func run(record: DailyRecord) -> DailyRecord? {
         let firstPicker = picker(date: record.firstMatchedAt ?? fallbackDate(record: record, hour: 9))
         let lastPicker = picker(date: record.lastMatchedAt ?? Date())
