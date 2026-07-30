@@ -19,10 +19,12 @@ BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$PLIST")"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIST")"
 MINIMUM_SYSTEM="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$PLIST")"
 LOCATION_DESCRIPTION="$(/usr/libexec/PlistBuddy -c 'Print :NSLocationWhenInUseUsageDescription' "$PLIST")"
+BLUETOOTH_DESCRIPTION="$(/usr/libexec/PlistBuddy -c 'Print :NSBluetoothAlwaysUsageDescription' "$PLIST")"
 
 [[ "$BUNDLE_ID" == "local.daka.menu" ]] || { print -u2 "Unexpected bundle id: $BUNDLE_ID"; exit 1; }
 [[ "$MINIMUM_SYSTEM" == "12.0" ]] || { print -u2 "Unexpected minimum macOS version: $MINIMUM_SYSTEM"; exit 1; }
 [[ -n "$LOCATION_DESCRIPTION" ]] || { print -u2 "Missing location usage description"; exit 1; }
+[[ -n "$BLUETOOTH_DESCRIPTION" ]] || { print -u2 "Missing Bluetooth usage description"; exit 1; }
 if [[ -n "$EXPECTED_VERSION" && "$VERSION" != "$EXPECTED_VERSION" ]]; then
     print -u2 "Expected version $EXPECTED_VERSION, found $VERSION"
     exit 1

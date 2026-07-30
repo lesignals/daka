@@ -28,6 +28,22 @@ struct ValidationTests {
         #expect(!WiFiSSIDMatcher.matches(current: nil, expected: "Office WiFi"))
     }
 
+    @Test func bluetoothSignalRequiresRecentRSSIAtOrAboveThreshold() {
+        #expect(BluetoothSignalMatcher.matches(currentRSSI: -60, minimumRSSI: -65))
+        #expect(BluetoothSignalMatcher.matches(currentRSSI: -65, minimumRSSI: -65))
+        #expect(!BluetoothSignalMatcher.matches(currentRSSI: -66, minimumRSSI: -65))
+        #expect(!BluetoothSignalMatcher.matches(currentRSSI: nil, minimumRSSI: -65))
+    }
+
+    @Test func bluetoothRSSIThresholdAcceptsPracticalRangeOnly() {
+        #expect(DakaInputValidator.bluetoothRSSI("-65") == -65)
+        #expect(DakaInputValidator.bluetoothRSSI("-100") == -100)
+        #expect(DakaInputValidator.bluetoothRSSI("-20") == -20)
+        #expect(DakaInputValidator.bluetoothRSSI("-101") == nil)
+        #expect(DakaInputValidator.bluetoothRSSI("-19") == nil)
+        #expect(DakaInputValidator.bluetoothRSSI("strong") == nil)
+    }
+
     @Test func editedTimesStayOnRecordDate() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try #require(TimeZone(identifier: "Asia/Shanghai"))

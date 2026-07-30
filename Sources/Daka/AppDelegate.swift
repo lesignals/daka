@@ -33,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         setupStore()
+        configureBluetoothMonitoring()
         setupChinaCalendar()
         setupStatusItem()
         setupNotifications()
@@ -457,6 +458,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             storageError = nil
             config = nextConfig
             startTimer()
+            configureBluetoothMonitoring()
             requestWiFiPermissionIfNeeded()
             evaluateAndRender()
             return true
@@ -570,6 +572,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func requestWiFiPermissionIfNeeded() {
         locationPermissionRequester.requestIfNeeded(required: requiresWiFiPermission)
+    }
+
+    private func configureBluetoothMonitoring() {
+        let required = config.rule.conditions.contains {
+            if case .bluetoothSignal = $0 {
+                return true
+            }
+            return false
+        }
+        BluetoothDeviceScanner.shared.setMonitoringEnabled(required)
     }
 
     @objc private func openLocationSettings() {

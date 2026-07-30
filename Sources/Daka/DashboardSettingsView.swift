@@ -151,11 +151,16 @@ struct DakaSettingsView: View {
                         condition: $draft.conditions[index],
                         ssidOptions: draft.ssidOptions,
                         ssidLoading: draft.ssidLoading,
+                        bluetoothOptions: draft.bluetoothOptions,
+                        bluetoothLoading: draft.bluetoothLoading,
                         canRemove: draft.conditions.count > 1,
                         onRefreshSSIDs: {
                             draft.refreshSSIDs(
                                 keeping: draft.conditions[index].primary
                             )
+                        },
+                        onRefreshBluetooth: {
+                            draft.refreshBluetoothDevices()
                         },
                         onRemove: {
                             draft.removeCondition(at: index)
@@ -393,6 +398,8 @@ private final class DakaSettingsDraft: ObservableObject {
     @Published var dayBeforeRestReminderMessage: String
     @Published var ssidOptions: [String] = []
     @Published var ssidLoading = false
+    @Published var bluetoothOptions: [BluetoothDeviceOption] = []
+    @Published var bluetoothLoading = false
     @Published var message: String?
     @Published var hasError = false
 
@@ -456,6 +463,14 @@ private final class DakaSettingsDraft: ObservableObject {
                 self.ssidOptions = options
                 self.ssidLoading = false
             }
+        }
+    }
+
+    func refreshBluetoothDevices() {
+        bluetoothLoading = true
+        BluetoothDeviceScanner.shared.discover { [weak self] options in
+            self?.bluetoothOptions = options
+            self?.bluetoothLoading = false
         }
     }
 
@@ -601,6 +616,7 @@ private struct DakaConditionDraft {
     enum Kind: String, CaseIterable, Hashable, Identifiable {
         case screenUnlocked
         case wifiConnected
+        case bluetoothSignal
         case powerConnected
         case networkReachable
         case timeRange
@@ -611,6 +627,7 @@ private struct DakaConditionDraft {
             switch self {
             case .screenUnlocked: return "屏幕已解锁"
             case .wifiConnected: return "连接 Wi-Fi"
+            case .bluetoothSignal: return "蓝牙信号"
             case .powerConnected: return "插入电源"
             case .networkReachable: return "网络可达"
             case .timeRange: return "时间范围"
@@ -623,6 +640,8 @@ private struct DakaConditionDraft {
                 return "屏幕未锁定且屏保未运行时满足。"
             case .wifiConnected:
                 return "连接到指定 SSID 时满足，名称区分大小写和空格。"
+            case .bluetoothSignal:
+                return "设备最近可见且信号达到阈值时满足，数值越接近 0 表示越近。"
             case .powerConnected:
                 return "Mac 接入外部电源时满足。"
             case .networkReachable:
@@ -636,7 +655,7 @@ private struct DakaConditionDraft {
             switch self {
             case .screenUnlocked, .powerConnected:
                 return true
-            case .wifiConnected, .networkReachable, .timeRange:
+            case .wifiConnected, .bluetoothSignal, .networkReachable, .timeRange:
                 return false
             }
         }
@@ -645,9 +664,13 @@ private struct DakaConditionDraft {
     var kind: Kind
     var primary = ""
     var secondary = ""
+    var tertiary = ""
 
     init(kind: Kind) {
         self.kind = kind
+        if kind == .bluetoothSignal {
+            secondary = "-65"
+        }
     }
 
     init(_ condition: TimerCondition) {
@@ -657,6 +680,11 @@ private struct DakaConditionDraft {
         case let .wifiConnected(ssid):
             kind = .wifiConnected
             primary = ssid
+        case let .bluetoothSignal(identifier, name, minimumRSSI):
+            kind = .bluetoothSignal
+            primary = identifier
+            secondary = String(minimumRSSI)
+            tertiary = name
         case .powerConnected:
             kind = .powerConnected
         case let .networkReachable(host, port):
@@ -677,6 +705,21 @@ private struct DakaConditionDraft {
         case .wifiConnected:
             let ssid = primary.trimmingCharacters(in: .whitespacesAndNewlines)
             return ssid.isEmpty ? nil : .wifiConnected(ssid: ssid)
+        case .bluetoothSignal:
+            let identifier = primary.trimmingCharacters(in: .whitespacesAndNewlines)
+            let name = tertiary.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard
+                !identifier.isEmpty,
+                !name.isEmpty,
+                let minimumRSSI = DakaInputValidator.bluetoothRSSI(secondary)
+            else {
+                return nil
+            }
+            return .bluetoothSignal(
+                identifier: identifier,
+                name: name,
+                minimumRSSI: minimumRSSI
+            )
         case .powerConnected:
             return .powerConnected
         case .networkReachable:
@@ -852,8 +895,11 @@ private struct ConditionEditorCard: View {
     @Binding var condition: DakaConditionDraft
     let ssidOptions: [String]
     let ssidLoading: Bool
+    let bluetoothOptions: [BluetoothDeviceOption]
+    let bluetoothLoading: Bool
     let canRemove: Bool
     let onRefreshSSIDs: () -> Void
+    let onRefreshBluetooth: () -> Void
     let onRemove: () -> Void
 
     var body: some View {
@@ -927,6 +973,60 @@ private struct ConditionEditorCard: View {
                 }
                 .buttonStyle(.bordered)
                 .disabled(ssidLoading)
+            }
+        case .bluetoothSignal:
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    Picker("蓝牙设备", selection: $condition.primary) {
+                        if
+                            !condition.primary.isEmpty,
+                            !bluetoothOptions.contains(where: {
+                                $0.identifier == condition.primary
+                            })
+                        {
+                            Text("\(condition.tertiary)（上次选择）")
+                                .tag(condition.primary)
+                        }
+                        if condition.primary.isEmpty {
+                            Text("请先扫描并选择设备").tag("")
+                        }
+                        ForEach(bluetoothOptions) { device in
+                            Text(device.displayTitle).tag(device.identifier)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity)
+                    .onChange(of: condition.primary) { identifier in
+                        if let device = bluetoothOptions.first(where: {
+                            $0.identifier == identifier
+                        }) {
+                            condition.tertiary = device.name
+                        }
+                    }
+
+                    Button(action: onRefreshBluetooth) {
+                        if bluetoothLoading {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Label("扫描", systemImage: "antenna.radiowaves.left.and.right")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(bluetoothLoading)
+                }
+
+                HStack(spacing: 10) {
+                    Text("最低信号")
+                        .font(.system(size: 12, weight: .medium))
+                    TextField("-65", text: $condition.secondary)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 90)
+                    Text("dBm（允许 -100 到 -20）")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
             }
         case .networkReachable:
             HStack(spacing: 10) {

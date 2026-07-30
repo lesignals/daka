@@ -20,6 +20,8 @@
     <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>Daka uses a selected nearby Bluetooth device and its signal strength to evaluate your clock-in rule.</string>
     <key>NSLocationUsageDescription</key>
     <string>Daka needs Wi-Fi network access to detect whether the current network matches your clock-in rule.</string>
     <key>NSLocationWhenInUseUsageDescription</key>
