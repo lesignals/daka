@@ -2,7 +2,7 @@ class Daka < Formula
   desc "macOS menu bar tracker for daily clock-in span"
   homepage "https://github.com/iBreaker/daka"
   url "https://github.com/iBreaker/daka/archive/refs/tags/v0.3.1.tar.gz"
-  sha256 "c2d42440991d86b52b07ce83e1dcad72cf42787be411b4239f1da2a3768345fd"
+  sha256 "3a66c884f5783b462d619d9a59b90c00e2f520bb051764f488eea217f694ffff"
   license :cannot_represent
   head "https://github.com/iBreaker/daka.git", branch: "main"
 
