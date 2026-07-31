@@ -1,0 +1,150 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+env:
+  TAP_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+
+jobs:
+  release:
+    name: Tag and release
+    runs-on: macos-15
+    # Release commits are pushed with GITHUB_TOKEN and do not retrigger
+    # workflows; the message guard covers manual runs and direct pushes.
+    if: >-
+      ${{ !startsWith(github.event.head_commit.message, 'release:') &&
+          !startsWith(github.event.head_commit.message, 'chore:') }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve next version
+        id: version
+        run: |
+          set -euo pipefail
+          CURRENT=$(tr -d '[:space:]' < VERSION)
+          LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -1 || true)
+          LATEST="${LATEST_TAG#v}"
+
+          if [[ -z "$LATEST_TAG" ]]; then
+            NEXT="$CURRENT"
+          elif [[ "$CURRENT" != "$LATEST" ]]; then
+            # VERSION was bumped intentionally (e.g. minor/major in a PR).
+            NEXT="$CURRENT"
+          else
+            NEXT=$(echo "$CURRENT" | awk -F. '{printf "%d.%d.%d", $1, $2, $3 + 1}')
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/v$NEXT" >/dev/null 2>&1; then
+            echo "Tag v$NEXT already exists, nothing to release."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "next=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "Resolved next version: $NEXT (current $CURRENT, latest tag ${LATEST_TAG:-none})"
+
+      - name: Bump release metadata
+        if: steps.version.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          NEXT="${{ steps.version.outputs.next }}"
+
+          printf '%s\n' "$NEXT" > VERSION
+
+          BUNDLE_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' Resources/Info.plist)
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $NEXT" Resources/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $((BUNDLE_VERSION + 1))" Resources/Info.plist
+
+          /usr/bin/sed -i '' -E "s#refs/tags/v[0-9]+\.[0-9]+\.[0-9]+#refs/tags/v$NEXT#" Formula/daka.rb
+
+          scripts/check-release.sh
+
+      - name: Commit, tag and push
+        if: steps.version.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          NEXT="${{ steps.version.outputs.next }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add VERSION Resources/Info.plist Formula/daka.rb
+          git commit -m "release: v$NEXT"
+          git tag -a "v$NEXT" -m "Daka $NEXT"
+          git push origin main
+          git push origin "v$NEXT"
+
+      - name: Create GitHub release
+        if: steps.version.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          NEXT="${{ steps.version.outputs.next }}"
+          gh release create "v$NEXT" \
+            --title "Daka $NEXT" \
+            --generate-notes \
+            --verify-tag
+
+      - name: Update formula tarball checksum
+        if: steps.version.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          NEXT="${{ steps.version.outputs.next }}"
+          TARBALL_URL="https://github.com/iBreaker/daka/archive/refs/tags/v$NEXT.tar.gz"
+
+          SHA=""
+          for attempt in 1 2 3 4 5; do
+            curl -fsSL "$TARBALL_URL" -o /tmp/daka-release.tar.gz && {
+              SHA=$(shasum -a 256 /tmp/daka-release.tar.gz | awk '{print $1}')
+              break
+            }
+            sleep 10
+          done
+          [[ -n "$SHA" ]] || { echo "Failed to download $TARBALL_URL"; exit 1; }
+
+          /usr/bin/sed -i '' -E "s#sha256 \"[0-9a-f]{64}\"#sha256 \"$SHA\"#" Formula/daka.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/daka.rb
+          git commit -m "chore: update Homebrew formula for v$NEXT"
+          git push origin main
+
+      - name: Update Homebrew tap
+        if: ${{ steps.version.outputs.skip != 'true' && env.TAP_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          NEXT="${{ steps.version.outputs.next }}"
+
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/iBreaker/homebrew-daka.git" tap
+          cp Formula/daka.rb tap/Formula/daka.rb
+
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/daka.rb
+          if git diff --cached --quiet; then
+            echo "Tap formula already up to date."
+          else
+            git commit -m "daka $NEXT"
+            git push origin main
+          fi
+
+      - name: Warn when tap token is missing
+        if: ${{ steps.version.outputs.skip != 'true' && env.TAP_TOKEN == '' }}
+        run: |
+          echo "::warning::TAP_GITHUB_TOKEN secret is not set; iBreaker/homebrew-daka was not updated."
