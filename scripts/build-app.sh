@@ -38,8 +38,15 @@ MACOS_DIR="$CONTENTS_DIR/MacOS"
 
 cd "$ROOT_DIR"
 
-/usr/bin/swift build -c "$CONFIGURATION" >&2
-BIN_DIR="$(/usr/bin/swift build -c "$CONFIGURATION" --show-bin-path)"
+SWIFT_BUILD_ARGS=(-c "$CONFIGURATION")
+# Homebrew builds already run inside a sandbox; SwiftPM's sandboxed manifest
+# compilation fails there because nested sandbox_apply is not permitted.
+if [[ -n "${HOMEBREW_TEMP:-}" ]]; then
+    SWIFT_BUILD_ARGS+=(--disable-sandbox)
+fi
+
+/usr/bin/swift build "${SWIFT_BUILD_ARGS[@]}" >&2
+BIN_DIR="$(/usr/bin/swift build "${SWIFT_BUILD_ARGS[@]}" --show-bin-path)"
 
 rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR"
